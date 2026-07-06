@@ -185,6 +185,9 @@
             },
             "permanent_cable_lock": {
                 "name": "Permanent kabelås"
+            },
+            "prevent_charging": {
+                "name": "Prevent charging start"
             }
         },
         "update": {

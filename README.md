@@ -196,10 +196,19 @@ of the following will prevent auto start:
 * Set the available charge current to `0 A`. There are two ways to do it
    * _"Available current"_ in the installation object
    * _"Charger max current"_ in the charger object
+* Turn on the _"Prevent charging start"_ switch in the installation object
+
+The _"Prevent charging start"_ switch is a convenience wrapper around the
+first option: turning it on sets the installation _"Available current"_ to
+`0 A`, and turning it off restores it to the previous value. This is handy for
+e.g. plugging in and authorizing the car, but waiting to charge until enough
+solar power is available. The switch remembers the previous available current
+(also across Home Assistant restarts) and reflects the installation state, so
+it turns on automatically if the available current is set to `0 A` elsewhere.
 
 > [!TIP]
-> Using _"Available current"_ will affect __all__ chargers if there are more
-> than one charger.
+> Using _"Available current"_ (and thus the _"Prevent charging start"_ switch)
+> will affect __all__ chargers if there are more than one charger.
 
 > [!IMPORTANT]
 > Setting the available charge has no effect if the charger is in _stand-alone_

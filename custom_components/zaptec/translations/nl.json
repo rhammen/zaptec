@@ -185,6 +185,9 @@
             },
             "permanent_cable_lock": {
                 "name": "Laadkabel vergrendeling"
+            },
+            "prevent_charging": {
+                "name": "Opladen blokkeren"
             }
         },
         "update": {
