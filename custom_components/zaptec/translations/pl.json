@@ -48,6 +48,9 @@
                     "on": "Wymagane"
                 }
             },
+            "ocpp_native_connected": {
+                "name": "OCPP połączone"
+            },
             "online": {
                 "name": "Online"
             }
@@ -120,6 +123,9 @@
                     "unknown": "Nieznany"
                 }
             },
+            "communication_signal_strength": {
+                "name": "Siła sygnału komunikacji"
+            },
             "completed_session_energy": {
                 "name": "Zużycie energii w zakończonej sesji"
             },
@@ -131,6 +137,9 @@
             },
             "current_phase3": {
                 "name": "Prąd fazy 3"
+            },
+            "current_user_roles": {
+                "name": "Bieżące role użytkownika"
             },
             "device_type": {
                 "name": "Typ urządzenia"
@@ -153,6 +162,12 @@
                     "tn_3_phase": "TN 3 Fazowy",
                     "unknown": "Nieznany"
                 }
+            },
+            "offline_mode": {
+                "name": "Tryb offline"
+            },
+            "power_factor": {
+                "name": "Współczynnik mocy"
             },
             "signed_meter_value": {
                 "name": "Licznik energii"

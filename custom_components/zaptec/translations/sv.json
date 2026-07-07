@@ -48,6 +48,9 @@
                     "on": "Krävs"
                 }
             },
+            "ocpp_native_connected": {
+                "name": "OCPP ansluten"
+            },
             "online": {
                 "name": "Online"
             }
@@ -120,6 +123,9 @@
                     "unknown": "Okänt"
                 }
             },
+            "communication_signal_strength": {
+                "name": "Kommunikationssignalstyrka"
+            },
             "completed_session_energy": {
                 "name": "Energiförbrukning denna laddningen"
             },
@@ -131,6 +137,9 @@
             },
             "current_phase3": {
                 "name": "Ström fas 3"
+            },
+            "current_user_roles": {
+                "name": "Aktuella användarroller"
             },
             "device_type": {
                 "name": "Enhetstyp"
@@ -153,6 +162,12 @@
                     "tn_3_phase": "TN 3 Fas",
                     "unknown": "Okänd"
                 }
+            },
+            "offline_mode": {
+                "name": "Offlineläge"
+            },
+            "power_factor": {
+                "name": "Effektfaktor"
             },
             "signed_meter_value": {
                 "name": "Förbrukad energi"

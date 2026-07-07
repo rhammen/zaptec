@@ -48,6 +48,9 @@
                     "on": "Påkrevd"
                 }
             },
+            "ocpp_native_connected": {
+                "name": "OCPP tilkoblet"
+            },
             "online": {
                 "name": "Tilkoblet"
             }
@@ -120,6 +123,9 @@
                     "unknown": "Ukjent"
                 }
             },
+            "communication_signal_strength": {
+                "name": "Kommunikasjonssignalstyrke"
+            },
             "completed_session_energy": {
                 "name": "Energiforbruk etter fullført økt"
             },
@@ -131,6 +137,9 @@
             },
             "current_phase3": {
                 "name": "Strøm fase 3"
+            },
+            "current_user_roles": {
+                "name": "Gjeldende brukerroller"
             },
             "device_type": {
                 "name": "Enhetstype"
@@ -153,6 +162,12 @@
                     "tn_3_phase": "TN 3-fase",
                     "unknown": "Ukjent"
                 }
+            },
+            "offline_mode": {
+                "name": "Frakoblet modus"
+            },
+            "power_factor": {
+                "name": "Effektfaktor"
             },
             "signed_meter_value": {
                 "name": "Energimåler"

@@ -94,6 +94,14 @@ CHARGER_ENTITIES: list[ZaptecEntityDescription] = [
         icon="mdi:lock",
         cls=ZaptecBinarySensor,
     ),
+    ZapBinarySensorEntityDescription(
+        key="ocpp_native_connected",
+        translation_key="ocpp_native_connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=const.EntityCategory.DIAGNOSTIC,
+        icon="mdi:server-network",
+        cls=ZaptecBinarySensor,
+    ),
 ]
 
 

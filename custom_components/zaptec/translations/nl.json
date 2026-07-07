@@ -48,6 +48,9 @@
                     "on": "Vereist"
                 }
             },
+            "ocpp_native_connected": {
+                "name": "OCPP verbonden"
+            },
             "online": {
                 "name": "Online"
             }
@@ -120,6 +123,9 @@
                     "unknown": "Onbekend"
                 }
             },
+            "communication_signal_strength": {
+                "name": "Signaalsterkte communicatie"
+            },
             "completed_session_energy": {
                 "name": "Laatste laadsessie"
             },
@@ -131,6 +137,9 @@
             },
             "current_phase3": {
                 "name": "Stroom fase3"
+            },
+            "current_user_roles": {
+                "name": "Huidige gebruikersrollen"
             },
             "device_type": {
                 "name": "Apparaattype"
@@ -153,6 +162,12 @@
                     "tn_3_phase": "TN 3 fase",
                     "unknown": "Onbekend"
                 }
+            },
+            "offline_mode": {
+                "name": "Offline modus"
+            },
+            "power_factor": {
+                "name": "Arbeidsfactor"
             },
             "signed_meter_value": {
                 "name": "Meterwaarde"

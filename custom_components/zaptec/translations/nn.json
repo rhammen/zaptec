@@ -48,6 +48,9 @@
                     "on": "Kravd"
                 }
             },
+            "ocpp_native_connected": {
+                "name": "OCPP tilkopla"
+            },
             "online": {
                 "name": "Tilkopla"
             }
@@ -120,6 +123,9 @@
                     "unknown": "Ukjend"
                 }
             },
+            "communication_signal_strength": {
+                "name": "Kommunikasjonssignalstyrke"
+            },
             "completed_session_energy": {
                 "name": "Energiforbruk etter fullført økt"
             },
@@ -131,6 +137,9 @@
             },
             "current_phase3": {
                 "name": "Straum fase 3"
+            },
+            "current_user_roles": {
+                "name": "Gjeldande brukarroller"
             },
             "device_type": {
                 "name": "Einingstype"
@@ -153,6 +162,12 @@
                     "tn_3_phase": "TN 3-fase",
                     "unknown": "Ukjend"
                 }
+            },
+            "offline_mode": {
+                "name": "Fråkopla modus"
+            },
+            "power_factor": {
+                "name": "Effektfaktor"
             },
             "signed_meter_value": {
                 "name": "Energimålar"

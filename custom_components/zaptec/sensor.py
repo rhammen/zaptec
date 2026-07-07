@@ -345,6 +345,38 @@ CHARGER_ENTITIES: list[ZaptecEntityDescription] = [
         cls=ZaptecSensor,
         # No state class as its not a numeric value
     ),
+    ZapSensorEntityDescription(
+        key="communication_signal_strength",
+        translation_key="communication_signal_strength",
+        entity_category=const.EntityCategory.DIAGNOSTIC,
+        icon="mdi:signal",
+        state_class=SensorStateClass.MEASUREMENT,
+        cls=ZaptecSensor,
+        # No device class/unit: dBm on WiFi but percent on LTE
+    ),
+    ZapSensorEntityDescription(
+        key="power_factor",
+        translation_key="power_factor",
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        entity_category=const.EntityCategory.DIAGNOSTIC,
+        state_class=SensorStateClass.MEASUREMENT,
+        cls=ZaptecSensor,
+    ),
+    ZapSensorEntityDescription(
+        key="current_user_roles",
+        translation_key="current_user_roles",
+        entity_category=const.EntityCategory.DIAGNOSTIC,
+        icon="mdi:account-key",
+        cls=ZaptecSensor,
+        # No state/device class: free-text, may contain multiple roles
+    ),
+    ZapSensorEntityDescription(
+        key="offline_mode",
+        translation_key="offline_mode",
+        entity_category=const.EntityCategory.DIAGNOSTIC,
+        icon="mdi:cloud-off-outline",
+        cls=ZaptecSensor,
+    ),
 ]
 
 

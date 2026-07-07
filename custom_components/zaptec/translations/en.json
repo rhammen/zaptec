@@ -48,6 +48,9 @@
                     "on": "Required"
                 }
             },
+            "ocpp_native_connected": {
+                "name": "OCPP connected"
+            },
             "online": {
                 "name": "Online"
             }
@@ -120,6 +123,9 @@
                     "unknown": "Unknown"
                 }
             },
+            "communication_signal_strength": {
+                "name": "Communication signal strength"
+            },
             "completed_session_energy": {
                 "name": "Completed session energy"
             },
@@ -131,6 +137,9 @@
             },
             "current_phase3": {
                 "name": "Current phase 3"
+            },
+            "current_user_roles": {
+                "name": "Current user roles"
             },
             "device_type": {
                 "name": "Device type"
@@ -153,6 +162,12 @@
                     "tn_3_phase": "TN 3 Phase",
                     "unknown": "Unknown"
                 }
+            },
+            "offline_mode": {
+                "name": "Offline mode"
+            },
+            "power_factor": {
+                "name": "Power factor"
             },
             "signed_meter_value": {
                 "name": "Energy meter"
