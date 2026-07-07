@@ -24,7 +24,7 @@ from .zaptec import Charger, Installation
 _LOGGER = logging.getLogger(__name__)
 
 
-class ZaptecSwitch(ZaptecBaseEntity, SwitchEntity):
+class ZaptecSwitch(ZaptecBaseEntity[Charger], SwitchEntity):
     """Base class for Zaptec switches."""
 
     # What to log on entity update
@@ -41,7 +41,6 @@ class ZaptecSwitch(ZaptecBaseEntity, SwitchEntity):
 class ZaptecChargeSwitch(ZaptecSwitch):
     """Zaptec charge switch entity."""
 
-    zaptec_obj: Charger
     _log_attribute = "_attr_is_on"
 
     @property
@@ -91,8 +90,6 @@ class ZaptecChargeSwitch(ZaptecSwitch):
 
 class ZaptecCableLockSwitch(ZaptecSwitch):
     """Zaptec cable lock entity."""
-
-    zaptec_obj: Charger
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Unlock the cable lock."""
@@ -219,8 +216,6 @@ class ZaptecChargingBlockSwitch(ZaptecSwitch, RestoreEntity):
 @dataclass(frozen=True, kw_only=True)
 class ZapSwitchEntityDescription(ZaptecEntityDescription, SwitchEntityDescription):
     """Class describing Zaptec switch entities."""
-
-    cls: type[SwitchEntity]
 
 
 INSTALLATION_ENTITIES: list[ZaptecEntityDescription] = [
