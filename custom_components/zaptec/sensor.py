@@ -137,6 +137,10 @@ class ZaptecSignalStrengthSensor(ZaptecSensor):
     """
 
     _MODE_LABELS: Final[dict[str, str]] = {"wifi": "WiFi", "lte": "LTE"}
+    _MODE_UNITS: Final[dict[str, str]] = {
+        "wifi": const.SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        "lte": const.PERCENTAGE,
+    }
 
     def _post_init(self) -> None:
         # Ensure the {mode} name placeholder always exists
@@ -147,7 +151,10 @@ class ZaptecSignalStrengthSensor(ZaptecSensor):
         """Update the entity from Zaptec data."""
         # Called from ZaptecBaseEntity._handle_coordinator_update()
         mode = str(self.zaptec_obj.get("CommunicationMode", "") or "")
-        self._attr_translation_placeholders = {"mode": self._MODE_LABELS.get(mode.lower(), mode)}
+        key = mode.lower()
+        self._attr_translation_placeholders = {"mode": self._MODE_LABELS.get(key, mode)}
+        # WiFi reports RSSI in dBm, LTE a signal percentage
+        self._attr_native_unit_of_measurement = self._MODE_UNITS.get(key)
         self._attr_native_value = self._get_zaptec_value()
         self._attr_available = True
 
