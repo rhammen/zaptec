@@ -124,7 +124,7 @@
                 }
             },
             "communication_signal_strength": {
-                "name": "Siła sygnału komunikacji"
+                "name": "Siła sygnału {mode}"
             },
             "completed_session_energy": {
                 "name": "Zużycie energii w zakończonej sesji"
@@ -162,9 +162,6 @@
                     "tn_3_phase": "TN 3 Fazowy",
                     "unknown": "Nieznany"
                 }
-            },
-            "offline_mode": {
-                "name": "Tryb offline"
             },
             "power_factor": {
                 "name": "Współczynnik mocy"

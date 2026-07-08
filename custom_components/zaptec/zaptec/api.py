@@ -604,7 +604,6 @@ class Charger(ZaptecBase):
         "is_online": lambda x: x in TRUTHY,
         "network_type": ZCONST.type_network_type,
         "ocpp_native_connected": lambda x: x in TRUTHY,
-        "offline_mode": int,
         "operating_mode": ZCONST.type_charger_operation_mode,
         "permanent_cable_lock": lambda x: x in TRUTHY,
         "power_factor": float,
