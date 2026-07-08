@@ -124,7 +124,7 @@
                 }
             },
             "communication_signal_strength": {
-                "name": "Kommunikationssignalstyrka"
+                "name": "Signalstyrka {mode}"
             },
             "completed_session_energy": {
                 "name": "Energiförbrukning denna laddningen"
@@ -162,9 +162,6 @@
                     "tn_3_phase": "TN 3 Fas",
                     "unknown": "Okänd"
                 }
-            },
-            "offline_mode": {
-                "name": "Offlineläge"
             },
             "power_factor": {
                 "name": "Effektfaktor"

@@ -129,6 +129,29 @@ class ZaptecEnengySensor(ZaptecSensor):
         self._attr_available = True
 
 
+class ZaptecSignalStrengthSensor(ZaptecSensor):
+    """Communication signal strength, labelled by the active communication mode.
+
+    WiFi reports RSSI (dBm) and LTE a signal percentage, so the entity name
+    reflects the current communication mode (e.g. "Signal strength WiFi").
+    """
+
+    _MODE_LABELS: Final[dict[str, str]] = {"wifi": "WiFi", "lte": "LTE"}
+
+    def _post_init(self) -> None:
+        # Ensure the {mode} name placeholder always exists
+        self._attr_translation_placeholders = {"mode": ""}
+
+    @callback
+    def _update_from_zaptec(self) -> None:
+        """Update the entity from Zaptec data."""
+        # Called from ZaptecBaseEntity._handle_coordinator_update()
+        mode = str(self.zaptec_obj.get("CommunicationMode", "") or "")
+        self._attr_translation_placeholders = {"mode": self._MODE_LABELS.get(mode.lower(), mode)}
+        self._attr_native_value = self._get_zaptec_value()
+        self._attr_available = True
+
+
 @dataclass(frozen=True, kw_only=True)
 class ZapSensorEntityDescription(ZaptecEntityDescription, SensorEntityDescription):
     """Provide a description of a Zaptec sensor."""
@@ -351,7 +374,7 @@ CHARGER_ENTITIES: list[ZaptecEntityDescription] = [
         entity_category=const.EntityCategory.DIAGNOSTIC,
         icon="mdi:signal",
         state_class=SensorStateClass.MEASUREMENT,
-        cls=ZaptecSensor,
+        cls=ZaptecSignalStrengthSensor,
         # No device class/unit: dBm on WiFi but percent on LTE
     ),
     ZapSensorEntityDescription(
@@ -369,13 +392,6 @@ CHARGER_ENTITIES: list[ZaptecEntityDescription] = [
         icon="mdi:account-key",
         cls=ZaptecSensor,
         # No state/device class: free-text, may contain multiple roles
-    ),
-    ZapSensorEntityDescription(
-        key="offline_mode",
-        translation_key="offline_mode",
-        entity_category=const.EntityCategory.DIAGNOSTIC,
-        icon="mdi:cloud-off-outline",
-        cls=ZaptecSensor,
     ),
 ]
 

@@ -124,7 +124,7 @@
                 }
             },
             "communication_signal_strength": {
-                "name": "Communication signal strength"
+                "name": "Signal strength {mode}"
             },
             "completed_session_energy": {
                 "name": "Completed session energy"
@@ -162,9 +162,6 @@
                     "tn_3_phase": "TN 3 Phase",
                     "unknown": "Unknown"
                 }
-            },
-            "offline_mode": {
-                "name": "Offline mode"
             },
             "power_factor": {
                 "name": "Power factor"

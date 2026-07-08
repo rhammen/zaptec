@@ -124,7 +124,7 @@
                 }
             },
             "communication_signal_strength": {
-                "name": "Kommunikasjonssignalstyrke"
+                "name": "Signalstyrke {mode}"
             },
             "completed_session_energy": {
                 "name": "Energiforbruk etter fullført økt"
@@ -162,9 +162,6 @@
                     "tn_3_phase": "TN 3-fase",
                     "unknown": "Ukjent"
                 }
-            },
-            "offline_mode": {
-                "name": "Frakoblet modus"
             },
             "power_factor": {
                 "name": "Effektfaktor"

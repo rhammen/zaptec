@@ -124,7 +124,7 @@
                 }
             },
             "communication_signal_strength": {
-                "name": "Signaalsterkte communicatie"
+                "name": "Signaalsterkte {mode}"
             },
             "completed_session_energy": {
                 "name": "Laatste laadsessie"
@@ -162,9 +162,6 @@
                     "tn_3_phase": "TN 3 fase",
                     "unknown": "Onbekend"
                 }
-            },
-            "offline_mode": {
-                "name": "Offline modus"
             },
             "power_factor": {
                 "name": "Arbeidsfactor"
