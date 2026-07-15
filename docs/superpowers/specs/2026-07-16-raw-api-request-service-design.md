@@ -160,16 +160,21 @@ recognize, so this doesn't need any change there).
 raw_api_request:
   name: Raw API request
   description: >-
-    Send an arbitrary request to the Zaptec API through this integration's
-    authenticated session. UNSUPPORTED: the endpoint, method, and payload
-    are not validated by this integration and may hit undocumented API
-    surface that Zaptec's API fair-use policy discourages relying on. You
-    are responsible for what you send; this may break without warning.
-    Select a charger or installation device, or specify charger_id /
-    installation_id directly.
+    Advanced/unsupported: only use this if you know exactly what you're
+    doing. This sends a request straight to the Zaptec API through this
+    integration's authenticated session, with NO validation of the
+    endpoint, method, or payload — including whether the device you select
+    (installation vs. charger) actually matches what the path targets. You
+    are fully responsible for every setting on this call. It may hit
+    undocumented API surface that can change or break without warning, and
+    that Zaptec's API fair-use policy discourages relying on. See
+    DEVELOPMENT.md for example calls.
   fields:
     device_id:
-      description: Select charger or installation device
+      description: >-
+        Select charger or installation device. Must match the device type
+        the chosen path targets (e.g. an installation device for
+        installation/{id}/... paths) — this is not checked for you.
       selector:
         device:
           integration: zaptec
@@ -197,6 +202,45 @@ raw_api_request:
       description: JSON request body (optional, e.g. for POST/PUT).
       example: '{"EnabledFeatures": 12}'
 ```
+
+### Documentation (`DEVELOPMENT.md`)
+
+Add a new section alongside the existing API-quirks notes (two-step
+resume-charging flow, `DeAuthorizeAndStop`'s 500, OCMF format, etc.) with
+two worked examples, both usable directly as an automation `action:` block:
+
+1. **Eco Mode** — the motivating case from
+   [issue #153](https://github.com/custom-components/zaptec/issues/153),
+   showing the (unconfirmed/undocumented) payload from that thread:
+
+   ```yaml
+   action: zaptec.raw_api_request
+   data:
+     device_id: <installation device>
+     path: "installation/{id}/update"
+     method: PUT
+     data:
+       EnabledFeatures: 12
+       Feature_PowerManagement_EcoMode_DepartureTime: 360
+       Feature_PowerManagement_EcoMode_MinEnergy: 10
+       Feature_PowerManagement_EcoMode_DeliveryArea: 8
+   ```
+
+   Noted inline as unverified — nobody in the upstream thread confirmed
+   whether the three `Feature_PowerManagement_EcoMode_*` fields are
+   required alongside `EnabledFeatures`, or what value disables it.
+
+2. **Read-only GET**, to show the simplest possible call and that
+   `response_variable` is how you get the result back in an automation:
+
+   ```yaml
+   action: zaptec.raw_api_request
+   data:
+     device_id: <installation device>
+     path: "installation/{id}"
+     method: GET
+   response_variable: raw_installation
+   ```
 
 ## Tests (`tests/test_services.py`)
 
