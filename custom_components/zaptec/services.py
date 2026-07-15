@@ -114,6 +114,34 @@ SEND_COMMAND_SCHEMA = vol.Schema(
     )
 )
 
+RAW_API_REQUEST_SCHEMA = vol.Schema(
+    vol.All(
+        vol.Schema(
+            {
+                vol.Required(
+                    vol.Any("charger_id", "installation_id", "device_id", "entity_id"),
+                    msg=(
+                        "At least one of 'charger_id', 'installation_id', "
+                        "'device_id' or 'entity_id' must be specified"
+                    ),
+                ): object,
+            },
+            extra=vol.ALLOW_EXTRA,
+        ),
+        vol.Schema(
+            {
+                vol.Optional("charger_id"): str,
+                vol.Optional("installation_id"): str,
+                vol.Optional("device_id"): vol.All(cv.ensure_list, [str]),
+                vol.Optional("entity_id"): vol.All(cv.ensure_list, [str]),
+                vol.Required("path"): str,
+                vol.Required("method"): vol.All(vol.Upper, vol.In(["GET", "POST", "PUT"])),
+                vol.Optional("data"): dict,
+            }
+        ),
+    )
+)
+
 
 def _get_as_set(service_call: ServiceCall, key: str) -> set[str]:
     """Return the given service-call field as a set of strings."""

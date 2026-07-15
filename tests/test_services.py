@@ -18,6 +18,7 @@ import custom_components.zaptec.services as services_module
 from custom_components.zaptec.services import (
     CHARGER_ID_SCHEMA,
     LIMIT_CURRENT_SCHEMA,
+    RAW_API_REQUEST_SCHEMA,
     SEND_COMMAND_SCHEMA,
     async_setup_services,
 )
@@ -736,6 +737,45 @@ def test_send_command_schema_requires_command() -> None:
     """SEND_COMMAND_SCHEMA rejects data missing the command field."""
     with pytest.raises(vol.Invalid, match="required key not provided"):
         SEND_COMMAND_SCHEMA({"charger_id": "x"})
+
+
+def test_raw_api_request_schema_requires_path_and_method() -> None:
+    """RAW_API_REQUEST_SCHEMA rejects data missing path or method."""
+    with pytest.raises(vol.Invalid, match="required key not provided"):
+        RAW_API_REQUEST_SCHEMA({"charger_id": "x", "method": "GET"})
+    with pytest.raises(vol.Invalid, match="required key not provided"):
+        RAW_API_REQUEST_SCHEMA({"charger_id": "x", "path": "chargers"})
+
+
+def test_raw_api_request_schema_requires_a_target() -> None:
+    """RAW_API_REQUEST_SCHEMA rejects data with none of the id fields."""
+    with pytest.raises(vol.Invalid, match="At least one of"):
+        RAW_API_REQUEST_SCHEMA({"path": "chargers", "method": "GET"})
+
+
+def test_raw_api_request_schema_normalizes_method_case() -> None:
+    """RAW_API_REQUEST_SCHEMA upper-cases a lowercase method."""
+    result = RAW_API_REQUEST_SCHEMA({"charger_id": "x", "path": "chargers", "method": "get"})
+    assert result["method"] == "GET"
+
+
+def test_raw_api_request_schema_rejects_delete() -> None:
+    """RAW_API_REQUEST_SCHEMA rejects DELETE (and anything outside GET/POST/PUT)."""
+    with pytest.raises(vol.Invalid, match="value must be one of"):
+        RAW_API_REQUEST_SCHEMA({"charger_id": "x", "path": "chargers", "method": "DELETE"})
+
+
+def test_raw_api_request_schema_accepts_optional_data() -> None:
+    """RAW_API_REQUEST_SCHEMA accepts an arbitrary data payload."""
+    result = RAW_API_REQUEST_SCHEMA(
+        {
+            "installation_id": "x",
+            "path": "installation/{id}/update",
+            "method": "put",
+            "data": {"EnabledFeatures": 12},
+        }
+    )
+    assert result["data"] == {"EnabledFeatures": 12}
 
 
 # ---------------------------------------------------------------------------
