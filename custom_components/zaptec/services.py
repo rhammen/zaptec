@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Generator
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import homeassistant.helpers.config_validation as cv
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-TServiceHandler = Callable[[ServiceCall], Awaitable[None]]
+TServiceHandler = Callable[[ServiceCall], Awaitable[ServiceResponse | None]]
 
 CHARGER_ID_SCHEMA = vol.Schema(
     vol.All(
@@ -385,24 +385,100 @@ async def service_handle_send_command(service_call: ServiceCall) -> None:
         await coordinator.trigger_poll()
 
 
+async def service_handle_raw_api_request(service_call: ServiceCall) -> ServiceResponse:
+    """Handle the raw_api_request service call."""
+    path = service_call.data["path"]
+    method = service_call.data["method"]
+    data = service_call.data.get("data")
+
+    _LOGGER.warning(
+        "Called raw_api_request: %s %s (this targets an unsupported/undocumented "
+        "API surface; the endpoint and payload are not validated by this integration)",
+        method,
+        path,
+    )
+
+    results: list[dict[str, Any]] = []
+    for coordinator, obj in iter_objects(service_call, mustbe=(Charger, Installation)):
+        resolved_path = path.replace("{id}", obj.id)
+        _LOGGER.debug("  >> %s %s to %s", method, resolved_path, obj.id)
+        try:
+            result = await obj.zaptec.request(resolved_path, method=method.lower(), data=data)
+        except Exception as exc:
+            raise HomeAssistantError(
+                f"Raw request '{method} {resolved_path}' failed: {exc}"
+            ) from exc
+        if method != "GET":
+            await coordinator.trigger_poll()
+        if isinstance(result, bytes):
+            result = result.decode("utf-8", errors="replace")
+        results.append({"target": obj.id, "path": resolved_path, "result": result})
+
+    return {"results": results}
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up services for zaptec."""
-    services: list[tuple[str, vol.Schema, TServiceHandler]] = [
-        ("stop_charging", CHARGER_ID_SCHEMA, service_handle_stop_charging),
-        ("resume_charging", CHARGER_ID_SCHEMA, service_handle_resume_charging),
-        ("authorize_charging", CHARGER_ID_SCHEMA, service_handle_authorize_charging),
+    services: list[tuple[str, vol.Schema, TServiceHandler, SupportsResponse]] = [
+        (
+            "stop_charging",
+            CHARGER_ID_SCHEMA,
+            service_handle_stop_charging,
+            SupportsResponse.NONE,
+        ),
+        (
+            "resume_charging",
+            CHARGER_ID_SCHEMA,
+            service_handle_resume_charging,
+            SupportsResponse.NONE,
+        ),
+        (
+            "authorize_charging",
+            CHARGER_ID_SCHEMA,
+            service_handle_authorize_charging,
+            SupportsResponse.NONE,
+        ),
         (
             "deauthorize_charging",
             CHARGER_ID_SCHEMA,
             service_handle_deauthorize_charging,
+            SupportsResponse.NONE,
         ),
-        ("restart_charger", CHARGER_ID_SCHEMA, service_handle_restart_charger),
-        ("upgrade_firmware", CHARGER_ID_SCHEMA, service_handle_upgrade_firmware),
-        ("limit_current", LIMIT_CURRENT_SCHEMA, service_handle_limit_current),
-        ("send_command", SEND_COMMAND_SCHEMA, service_handle_send_command),
+        (
+            "restart_charger",
+            CHARGER_ID_SCHEMA,
+            service_handle_restart_charger,
+            SupportsResponse.NONE,
+        ),
+        (
+            "upgrade_firmware",
+            CHARGER_ID_SCHEMA,
+            service_handle_upgrade_firmware,
+            SupportsResponse.NONE,
+        ),
+        (
+            "limit_current",
+            LIMIT_CURRENT_SCHEMA,
+            service_handle_limit_current,
+            SupportsResponse.NONE,
+        ),
+        (
+            "send_command",
+            SEND_COMMAND_SCHEMA,
+            service_handle_send_command,
+            SupportsResponse.NONE,
+        ),
+        (
+            "raw_api_request",
+            RAW_API_REQUEST_SCHEMA,
+            service_handle_raw_api_request,
+            SupportsResponse.OPTIONAL,
+        ),
     ]
 
     # Register the services
-    for name, schema, handler in services:
+    for name, schema, handler, supports_response in services:
         if not hass.services.has_service(DOMAIN, name):
-            hass.services.async_register(DOMAIN, name, handler, schema=schema)
+            hass.services.async_register(
+                DOMAIN, name, handler, schema=schema, supports_response=supports_response
+            )

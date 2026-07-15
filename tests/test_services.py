@@ -122,7 +122,7 @@ async def handlers(hass: MagicMock, manager: MagicMock) -> dict[str, Any]:
 
 
 async def test_async_setup_services_registers_all_services(hass: MagicMock) -> None:
-    """All eight zaptec services get registered under the zaptec domain."""
+    """All nine zaptec services get registered under the zaptec domain."""
     hass.services.has_service = MagicMock(return_value=False)
 
     await async_setup_services(hass)
@@ -137,6 +137,7 @@ async def test_async_setup_services_registers_all_services(hass: MagicMock) -> N
         "upgrade_firmware",
         "limit_current",
         "send_command",
+        "raw_api_request",
     }
     assert all(call.args[0] == DOMAIN for call in hass.services.async_register.call_args_list)
 
@@ -654,6 +655,144 @@ async def test_send_command_wraps_failure(
         )
 
     coordinator.trigger_poll.assert_not_awaited()
+
+
+def _attach_zaptec_client(obj: MagicMock, request_return: Any = None) -> AsyncMock:
+    """Attach a mock .zaptec.request() to a charger/installation mock; return the AsyncMock."""
+    obj.zaptec = MagicMock()
+    obj.zaptec.request = AsyncMock(return_value=request_return)
+    return obj.zaptec.request
+
+
+async def test_raw_api_request_substitutes_id_and_returns_result(
+    hass: MagicMock, manager: MagicMock, add_installation: Any, handlers: dict[str, Any]
+) -> None:
+    """{id} in path is replaced with the resolved object's id; the API result is returned."""
+    installation, coordinator = add_installation("install1")
+    request = _attach_zaptec_client(installation, request_return={"Id": "install1"})
+
+    result = await handlers["raw_api_request"](
+        make_call(
+            hass,
+            {
+                "installation_id": "install1",
+                "path": "installation/{id}/update",
+                "method": "PUT",
+                "data": {"EnabledFeatures": 12},
+            },
+        )
+    )
+
+    request.assert_awaited_once_with(
+        "installation/install1/update", method="put", data={"EnabledFeatures": 12}
+    )
+    assert result == {
+        "results": [
+            {
+                "target": "install1",
+                "path": "installation/install1/update",
+                "result": {"Id": "install1"},
+            }
+        ]
+    }
+    coordinator.trigger_poll.assert_awaited_once()
+
+
+async def test_raw_api_request_get_does_not_trigger_poll(
+    hass: MagicMock, manager: MagicMock, add_charger: Any, handlers: dict[str, Any]
+) -> None:
+    """A GET request does not trigger a coordinator poll."""
+    charger, coordinator = add_charger("charger1")
+    _attach_zaptec_client(charger, request_return={"Id": "charger1"})
+
+    await handlers["raw_api_request"](
+        make_call(hass, {"charger_id": "charger1", "path": "chargers/{id}", "method": "GET"})
+    )
+
+    coordinator.trigger_poll.assert_not_awaited()
+
+
+async def test_raw_api_request_decodes_bytes_result(
+    hass: MagicMock, manager: MagicMock, add_charger: Any, handlers: dict[str, Any]
+) -> None:
+    """A raw bytes response (e.g. from a 204) is decoded to a string for the response data."""
+    charger, _coordinator = add_charger("charger1")
+    _attach_zaptec_client(charger, request_return=b"")
+
+    result = await handlers["raw_api_request"](
+        make_call(
+            hass, {"charger_id": "charger1", "path": "chargers/{id}/update", "method": "POST"}
+        )
+    )
+
+    assert result["results"][0]["result"] == ""
+
+
+async def test_raw_api_request_wraps_failure(
+    hass: MagicMock, manager: MagicMock, add_charger: Any, handlers: dict[str, Any]
+) -> None:
+    """A request failure is wrapped in HomeAssistantError and skips the poll."""
+    charger, coordinator = add_charger("charger1")
+    request = _attach_zaptec_client(charger)
+    request.side_effect = Exception("boom")
+
+    with pytest.raises(HomeAssistantError, match="Raw request 'GET chargers/charger1' failed"):
+        await handlers["raw_api_request"](
+            make_call(hass, {"charger_id": "charger1", "path": "chargers/{id}", "method": "GET"})
+        )
+
+    coordinator.trigger_poll.assert_not_awaited()
+
+
+async def test_raw_api_request_targets_multiple_devices(
+    hass: MagicMock,
+    manager: MagicMock,
+    add_charger: Any,
+    add_installation: Any,
+    handlers: dict[str, Any],
+) -> None:
+    """A single call can target both a charger and an installation; both are processed."""
+    charger, _charger_coordinator = add_charger("charger1")
+    installation, _install_coordinator = add_installation("install1")
+    _attach_zaptec_client(charger, request_return="charger-result")
+    _attach_zaptec_client(installation, request_return="installation-result")
+
+    result = await handlers["raw_api_request"](
+        make_call(
+            hass,
+            {
+                "charger_id": "charger1",
+                "installation_id": "install1",
+                "path": "{id}",
+                "method": "GET",
+            },
+        )
+    )
+
+    targets = {entry["target"]: entry["result"] for entry in result["results"]}
+    assert targets == {"charger1": "charger-result", "install1": "installation-result"}
+
+
+async def test_raw_api_request_logs_a_warning(
+    hass: MagicMock,
+    manager: MagicMock,
+    add_charger: Any,
+    handlers: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Every call logs a warning that this hits an unsupported/undocumented surface."""
+    charger, _coordinator = add_charger("charger1")
+    _attach_zaptec_client(charger, request_return={})
+
+    with caplog.at_level("WARNING"):
+        await handlers["raw_api_request"](
+            make_call(hass, {"charger_id": "charger1", "path": "chargers/{id}", "method": "GET"})
+        )
+
+    assert any(
+        record.levelname == "WARNING" and "raw_api_request" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 # ---------------------------------------------------------------------------
