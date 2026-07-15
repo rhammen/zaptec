@@ -150,3 +150,48 @@ send_command:
     command:
       description: Charger command. Either string or integer.
       example: "StopChargingFinal"
+
+raw_api_request:
+  name: Raw API request
+  description: >-
+    Advanced/unsupported: only use this if you know exactly what you're
+    doing. This sends a request straight to the Zaptec API through this
+    integration's authenticated session, with NO validation of the
+    endpoint, method, or payload — including whether the device you select
+    (installation vs. charger) actually matches what the path targets. You
+    are fully responsible for every setting on this call. It may hit
+    undocumented API surface that can change or break without warning, and
+    that Zaptec's API fair-use policy discourages relying on. See
+    DEVELOPMENT.md for example calls.
+  fields:
+    device_id:
+      description: >-
+        Select charger or installation device. Must match the device type
+        the chosen path targets (e.g. an installation device for
+        installation/{id}/... paths) — this is not checked for you.
+      selector:
+        device:
+          integration: zaptec
+    charger_id:
+      description: Charger identifier
+      example: 00000000-1111-2222-3333-444444444444
+    installation_id:
+      description: Installation identifier
+      example: 00000000-1111-2222-3333-444444444444
+    path:
+      description: >-
+        Relative API path. A literal {id} is replaced with the resolved
+        charger/installation's own id.
+      example: "installation/{id}/update"
+    method:
+      description: HTTP method.
+      example: "PUT"
+      selector:
+        select:
+          options:
+            - "GET"
+            - "POST"
+            - "PUT"
+    data:
+      description: JSON request body (optional, e.g. for POST/PUT).
+      example: '{"EnabledFeatures": 12}'
