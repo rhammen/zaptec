@@ -211,3 +211,50 @@ The field `SignedMeterValue` and `CompletedSession.SignedSession` are using the
 Open Charge Metering Format, which can be read here:
 
 * https://github.com/SAFE-eV/OCMF-Open-Charge-Metering-Format/blob/master/OCMF-en.md
+
+## `raw_api_request` service
+
+`raw_api_request` is an escape hatch for hitting Zaptec API endpoints this
+integration doesn't otherwise model — see [upstream issue #153](
+https://github.com/custom-components/zaptec/issues/153) for the motivating
+case (Eco Mode). It sends the given `path`/`method`/`data` through the
+integration's authenticated session with no validation; you are responsible
+for the endpoint, method, and payload being correct, including picking a
+`device_id`/`charger_id`/`installation_id` whose type actually matches what
+the path targets.
+
+### Example: Eco Mode (undocumented, unverified)
+
+```yaml
+action: zaptec.raw_api_request
+data:
+  device_id: <installation device>
+  path: "installation/{id}/update"
+  method: PUT
+  data:
+    EnabledFeatures: 12
+    Feature_PowerManagement_EcoMode_DepartureTime: 360
+    Feature_PowerManagement_EcoMode_MinEnergy: 10
+    Feature_PowerManagement_EcoMode_DeliveryArea: 8
+```
+
+This payload comes from the discussion on issue #153 and was never
+confirmed against the live API: it's unknown whether the three
+`Feature_PowerManagement_EcoMode_*` fields are required alongside
+`EnabledFeatures`, or what value disables Eco Mode again.
+
+### Example: read-only GET
+
+```yaml
+action: zaptec.raw_api_request
+data:
+  device_id: <installation device>
+  path: "installation/{id}"
+  method: GET
+response_variable: raw_installation
+```
+
+`response_variable` (or `response_data` in a script/scene) is how an
+automation gets the API's response back — every `raw_api_request` call
+returns `{"results": [{"target": ..., "path": ..., "result": ...}, ...]}`,
+one entry per resolved target.
