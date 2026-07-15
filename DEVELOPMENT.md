@@ -223,6 +223,11 @@ for the endpoint, method, and payload being correct, including picking a
 `device_id`/`charger_id`/`installation_id` whose type actually matches what
 the path targets.
 
+A call targeting multiple devices is not atomic: targets are processed one
+at a time, so if an earlier target's request succeeds and a later one then
+fails, the earlier mutation has already happened even though the overall
+service call raises an error.
+
 ### Example: Eco Mode (undocumented, unverified)
 
 ```yaml
