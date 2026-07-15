@@ -355,6 +355,58 @@ async def test_unloaded_config_entry_without_runtime_data_is_skipped(
         await handlers["stop_charging"](make_call(hass, {"charger_id": "charger_missing"}))
 
 
+async def test_iter_objects_tuple_mustbe_resolves_installation_id(
+    hass: MagicMock, manager: MagicMock, add_installation: Any
+) -> None:
+    """iter_objects accepts a tuple mustbe and resolves installation_id through it."""
+    installation, coordinator = add_installation("install1")
+    hass.config_entries.async_entries.return_value = [SimpleNamespace(runtime_data=manager)]
+
+    call = make_call(hass, {"installation_id": "install1"})
+    results = list(services_module.iter_objects(call, mustbe=(Charger, Installation)))
+
+    assert results == [(coordinator, installation)]
+
+
+async def test_iter_objects_tuple_mustbe_resolves_charger_id(
+    hass: MagicMock, manager: MagicMock, add_charger: Any
+) -> None:
+    """iter_objects accepts a tuple mustbe and resolves charger_id through it."""
+    charger, coordinator = add_charger("charger1")
+    hass.config_entries.async_entries.return_value = [SimpleNamespace(runtime_data=manager)]
+
+    call = make_call(hass, {"charger_id": "charger1"})
+    results = list(services_module.iter_objects(call, mustbe=(Charger, Installation)))
+
+    assert results == [(coordinator, charger)]
+
+
+async def test_iter_objects_tuple_mustbe_wrong_type_raises_with_both_names(
+    hass: MagicMock, manager: MagicMock
+) -> None:
+    """A resolved object that is neither type in the tuple names both types in the error."""
+    manager.zaptec["thing1"] = MagicMock(spec=[])
+    manager.device_coordinators["thing1"] = MagicMock()
+    hass.config_entries.async_entries.return_value = [SimpleNamespace(runtime_data=manager)]
+
+    call = make_call(hass, {"charger_id": "thing1"})
+    with pytest.raises(HomeAssistantError, match="is not a Charger or Installation"):
+        list(services_module.iter_objects(call, mustbe=(Charger, Installation)))
+
+
+async def test_iter_objects_tuple_mustbe_missing_field_names_both(
+    hass: MagicMock, manager: MagicMock
+) -> None:
+    """No ids specified with a tuple mustbe names both legacy id fields in the error."""
+    hass.config_entries.async_entries.return_value = [SimpleNamespace(runtime_data=manager)]
+
+    call = make_call(hass, {})
+    with pytest.raises(
+        HomeAssistantError, match="Missing field 'charger_id' or 'installation_id'"
+    ):
+        list(services_module.iter_objects(call, mustbe=(Charger, Installation)))
+
+
 # ---------------------------------------------------------------------------
 # Individual service handlers
 # ---------------------------------------------------------------------------

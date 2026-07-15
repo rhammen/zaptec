@@ -131,13 +131,15 @@ def _iter_managers(hass: HomeAssistant) -> Generator[ZaptecManager]:
 
 
 def iter_objects[T](
-    service_call: ServiceCall, mustbe: type[T]
+    service_call: ServiceCall, mustbe: type[T] | tuple[type, ...]
 ) -> Generator[tuple[ZaptecUpdateCoordinator, T]]:
     """Resolve the devices/entities targeted by a service call to zaptec objects.
 
     Devices are looked up across every loaded zaptec config entry, not just
     one, so a service call still resolves correctly when multiple Zaptec
-    accounts are configured.
+    accounts are configured. `mustbe` may be a single type or a tuple of
+    types, to support services that can target either a Charger or an
+    Installation.
     """
     hass = service_call.hass
     ent_reg = er.async_get(hass)
@@ -173,18 +175,21 @@ def iter_objects[T](
             uids.add(uid)
             lookup[uid] = err_device
 
-    # Append any legacy charger_id or installation_id that might be specified
-    field = None
-    if mustbe is Charger:
-        field = "charger_id"
-    elif mustbe is Installation:
-        field = "installation_id"
-    if field:
+    # Append any legacy charger_id or installation_id that might be specified.
+    # Check the legacy field for every type present in mustbe.
+    types = mustbe if isinstance(mustbe, tuple) else (mustbe,)
+    field_by_type = {Charger: "charger_id", Installation: "installation_id"}
+    fields = [field_by_type[t] for t in types if t in field_by_type]
+    for field in fields:
         uids.update(_get_as_set(service_call, field))
 
     # Any uid specified at all?
     if not uids:
-        suffix = f". Missing field '{field}'" if field else ""
+        if fields:
+            joined = " or ".join(f"'{f}'" for f in fields)
+            suffix = f". Missing field {joined}"
+        else:
+            suffix = ""
         raise HomeAssistantError(f"No zaptec devices specified{suffix}")
 
     managers = list(_iter_managers(hass))
@@ -205,7 +210,8 @@ def iter_objects[T](
         if zaptec_object is None:
             raise HomeAssistantError(f"Unable to find zaptec object for {err_device}")
         if not isinstance(zaptec_object, mustbe):
-            raise HomeAssistantError(f"{err_device} is not a {mustbe.__name__}")
+            type_names = " or ".join(t.__name__ for t in types)
+            raise HomeAssistantError(f"{err_device} is not a {type_names}")
         if coordinator is None:
             raise HomeAssistantError(f"{err_device} is not available")
 
