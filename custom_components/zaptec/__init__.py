@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components.recorder import DOMAIN as RECORDER_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
@@ -189,13 +190,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Setup the statistics coordinators, one per tracked charger, to backdate
     # hourly energy consumption into HA's Energy Dashboard statistics (fixes
-    # the live sensor's misattributed-hour delay, see issue #300).
-    for deviceid in tracked_devices:
-        zaptec_obj = zaptec[deviceid]
-        if isinstance(zaptec_obj, Charger):
-            manager.statistics_coordinators[deviceid] = ZaptecStatisticsCoordinator(
-                hass, entry=entry, charger=zaptec_obj
-            )
+    # the live sensor's misattributed-hour delay, see issue #300). This feature
+    # needs the recorder, but recorder is only an *after* dependency (not a hard
+    # one) so the rest of the integration still loads if the user has disabled
+    # it - in that case we skip only the energy-statistics feed.
+    if RECORDER_DOMAIN in hass.config.components:
+        for deviceid in tracked_devices:
+            zaptec_obj = zaptec[deviceid]
+            if isinstance(zaptec_obj, Charger):
+                manager.statistics_coordinators[deviceid] = ZaptecStatisticsCoordinator(
+                    hass, entry=entry, charger=zaptec_obj
+                )
+    else:
+        _LOGGER.info(
+            "Recorder is not enabled; skipping Zaptec energy-statistics import "
+            "(the Energy Dashboard feed for issue #300 will be unavailable)"
+        )
 
     # Initialize the coordinators
     for co in manager.all_coordinators:
