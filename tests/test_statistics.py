@@ -16,7 +16,7 @@ from custom_components.zaptec.statistics import (
     _floor_hour,
     bucket_sessions_hourly,
 )
-from custom_components.zaptec.zaptec.exceptions import RequestError
+from custom_components.zaptec.zaptec.exceptions import RequestError, ZaptecApiError
 from tests.conftest import make_charger, setup_integration
 
 if TYPE_CHECKING:
@@ -260,6 +260,30 @@ def test_floor_hour_snaps_reports_a_few_seconds_early_to_the_next_hour() -> None
     assert _floor_hour(datetime(2026, 1, 1, 11, 59, 50, tzinfo=timezone.utc)) == eleven  # noqa: UP017
 
 
+def test_point_with_unparseable_timestamp_is_skipped() -> None:
+    """A point whose timestamp can't be parsed is skipped rather than crashing the page."""
+    session = _session(
+        "s1",
+        [("not-a-timestamp", 5.0), ("2026-01-01T10:10:00+00:00", 2.0)],
+    )
+
+    result = bucket_sessions_hourly([session], after=None, running_sum=0.0)
+
+    # Only the parseable point contributes; the bad one is dropped, not fatal.
+    assert len(result) == 1
+    assert result[0]["start"] == datetime(2026, 1, 1, 10, tzinfo=timezone.utc)  # noqa: UP017
+    assert result[0]["state"] == 2.0  # noqa: PLR2004
+
+
+def test_legacy_session_without_end_or_energy_contributes_nothing() -> None:
+    """A session with no energyDetails and no usable endDateTime/energy yields no points."""
+    session = {"id": "s1", "endDateTime": None, "energy": 0.0, "energyDetails": []}
+
+    result = bucket_sessions_hourly([session], after=None, running_sum=0.0)
+
+    assert result == []
+
+
 # --- ZaptecStatisticsCoordinator ----------------------------------------------
 #
 # Behavior tests for the coordinator, driven with a real `hass` and
@@ -422,6 +446,24 @@ async def test_other_request_errors_raise_update_failed(
     charger.get_archived_sessions = AsyncMock(
         side_effect=RequestError("server error", HTTPStatus.INTERNAL_SERVER_ERROR)
     )
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+    ):
+        _run_executor_inline(mock_get_instance)
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()  # noqa: SLF001
+
+
+async def test_non_request_zaptec_api_error_raises_update_failed(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """A ZaptecApiError that isn't a RequestError (so has no status code) still fails the poll."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(side_effect=ZaptecApiError("boom"))
     coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
 
     with (
