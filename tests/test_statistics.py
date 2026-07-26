@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from http import HTTPStatus
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
-from custom_components.zaptec.statistics import _floor_hour, bucket_sessions_hourly
+from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.util import dt as dt_util
+import pytest
+
+from custom_components.zaptec.statistics import (
+    ZaptecStatisticsCoordinator,
+    _floor_hour,
+    bucket_sessions_hourly,
+)
+from custom_components.zaptec.zaptec.exceptions import RequestError
+from tests.conftest import make_charger
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 def _session(
@@ -238,3 +255,274 @@ def test_floor_hour_snaps_reports_a_few_seconds_early_to_the_next_hour() -> None
     assert _floor_hour(datetime(2026, 1, 1, 11, 59, 58, tzinfo=timezone.utc)) == noon  # noqa: UP017
     # Comfortably early (outside tolerance): floors down as normal.
     assert _floor_hour(datetime(2026, 1, 1, 11, 59, 50, tzinfo=timezone.utc)) == eleven  # noqa: UP017
+
+
+# --- ZaptecStatisticsCoordinator ----------------------------------------------
+#
+# Behavior tests for the coordinator, driven with a real `hass` and
+# `MockConfigEntry` from the pytest-homeassistant-custom-component harness
+# (adopted repo-wide in the test-harness migration), not a hand-rolled mock
+# `hass`/`FakeConfigEntry`. HA's own recorder-statistics functions are patched
+# at the module boundary on purpose: the coordinator's contract is to compute
+# the right StatisticData points and hand them to `async_add_external_statistics`
+# — persisting them is the recorder's job, and re-testing that here would add no
+# coverage of our own code. The pure hour-bucketing math is covered by the
+# bucket_sessions_hourly tests above.
+
+_ONE_SESSION_PAGE = {
+    "sessions": [
+        {"id": "s1", "energyDetails": [{"timestamp": "2026-01-01T10:10:00+00:00", "energy": 2.0}]}
+    ],
+    "cursor": None,
+    "hasMore": False,
+}
+
+
+def _run_executor_inline(mock_get_instance: object) -> None:
+    """Make the patched recorder run its executor job (get_last_statistics) inline.
+
+    The coordinator calls `get_instance(hass).async_add_executor_job(get_last_statistics, ...)`;
+    with both patched, this runs the (patched) function synchronously so its
+    return value flows through without a real recorder thread.
+    """
+    mock_get_instance.return_value.async_add_executor_job = AsyncMock(
+        side_effect=lambda func, *args: func(*args)
+    )
+
+
+async def test_statistic_id_derived_from_charger_id(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """The statistic_id is stable and derived from the charger's id."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "abc-123", "name": "My Charger"})
+
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    assert coordinator.statistic_id == "zaptec:energy_abc123"
+
+
+async def test_first_run_backfills_from_zero_sum(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """With no prior statistics, import starts from sum=0 and stores the first hour."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(return_value=_ONE_SESSION_PAGE)
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics") as mock_add,
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    assert mock_add.call_count == 1
+    _hass_arg, metadata, statistics = mock_add.call_args[0]
+    # StatisticMetaData/StatisticData are TypedDicts (plain dicts at runtime) —
+    # use dict-key access, not attribute access.
+    assert metadata["statistic_id"] == "zaptec:energy_chg1"
+    assert metadata["name"] == "My Charger Energy"
+    assert len(statistics) == 1
+    assert statistics[0]["sum"] == 2.0  # noqa: PLR2004
+    charger.get_archived_sessions.assert_awaited_once()
+
+
+async def test_no_new_sessions_does_not_call_add_statistics(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """If there's nothing new to import, async_add_external_statistics is not called."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(
+        return_value={"sessions": [], "cursor": None, "hasMore": False}
+    )
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics") as mock_add,
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    mock_add.assert_not_called()
+
+
+async def test_resumes_from_last_statistics(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """A prior statistics entry sets the resume point (minus RESUME_MARGIN) and running sum."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(
+        return_value={"sessions": [], "cursor": None, "hasMore": False}
+    )
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+    last_start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch(
+            "custom_components.zaptec.statistics.get_last_statistics",
+            return_value={
+                coordinator.statistic_id: [{"start": last_start.timestamp(), "sum": 42.0}]
+            },
+        ),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics"),
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    call_kwargs = charger.get_archived_sessions.call_args.kwargs
+    assert call_kwargs["from_time"] == last_start - timedelta(hours=26)
+    # to_time is "now" at call time — assert it's recent rather than exact.
+    assert (dt_util.utcnow() - call_kwargs["to_time"]) < timedelta(seconds=5)
+
+
+async def test_forbidden_error_is_logged_not_raised(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """A 403 (non-Owner account) is logged and skipped, not raised as UpdateFailed.
+
+    /api/sessions/archived requires the Owner role — many Zaptec accounts won't
+    have it on every charger, and that shouldn't repeatedly fail the coordinator
+    or spam the log with UpdateFailed errors on every poll.
+    """
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(
+        side_effect=RequestError("forbidden", HTTPStatus.FORBIDDEN)
+    )
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics") as mock_add,
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    mock_add.assert_not_called()
+
+
+async def test_other_request_errors_raise_update_failed(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """A non-403 RequestError still raises UpdateFailed, so HA surfaces it normally."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(
+        side_effect=RequestError("server error", HTTPStatus.INTERNAL_SERVER_ERROR)
+    )
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+    ):
+        _run_executor_inline(mock_get_instance)
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()  # noqa: SLF001
+
+
+async def test_pages_through_multiple_results(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """Cursor from page 1 is threaded into page 2's request; both pages are imported."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(
+        side_effect=[
+            {
+                "sessions": [
+                    {
+                        "id": "s1",
+                        "energyDetails": [
+                            {"timestamp": "2026-01-01T10:10:00+00:00", "energy": 1.0}
+                        ],
+                    }
+                ],
+                "cursor": "page2-cursor",
+                "hasMore": True,
+            },
+            {
+                "sessions": [
+                    {
+                        "id": "s2",
+                        "energyDetails": [
+                            {"timestamp": "2026-01-01T12:10:00+00:00", "energy": 2.0}
+                        ],
+                    }
+                ],
+                "cursor": None,
+                "hasMore": False,
+            },
+        ]
+    )
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics") as mock_add,
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    assert charger.get_archived_sessions.await_count == 2  # noqa: PLR2004
+    first_call, second_call = charger.get_archived_sessions.await_args_list
+    assert first_call.kwargs.get("cursor") is None
+    assert second_call.kwargs["cursor"] == "page2-cursor"
+
+    _hass_arg, _metadata, statistics = mock_add.call_args[0]
+    assert len(statistics) == 2  # noqa: PLR2004
+    assert [s["sum"] for s in statistics] == [1.0, 3.0]
+
+
+async def test_metadata_includes_unit_class_when_supported(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """unit_class is included in the metadata when the installed HA core supports it."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(return_value=_ONE_SESSION_PAGE)
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics") as mock_add,
+        patch("custom_components.zaptec.statistics._SUPPORTS_UNIT_CLASS", new=True),
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    _hass_arg, metadata, _statistics = mock_add.call_args[0]
+    assert "unit_class" in metadata
+
+
+async def test_metadata_omits_unit_class_when_unsupported(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """unit_class is omitted entirely on older HA cores whose StatisticsMeta lacks the column."""
+    mock_config_entry.add_to_hass(hass)
+    charger = make_charger({"id": "chg-1", "name": "My Charger"})
+    charger.get_archived_sessions = AsyncMock(return_value=_ONE_SESSION_PAGE)
+    coordinator = ZaptecStatisticsCoordinator(hass, entry=mock_config_entry, charger=charger)
+
+    with (
+        patch("custom_components.zaptec.statistics.get_instance") as mock_get_instance,
+        patch("custom_components.zaptec.statistics.get_last_statistics", return_value={}),
+        patch("custom_components.zaptec.statistics.async_add_external_statistics") as mock_add,
+        patch("custom_components.zaptec.statistics._SUPPORTS_UNIT_CLASS", new=False),
+    ):
+        _run_executor_inline(mock_get_instance)
+        await coordinator._async_update_data()  # noqa: SLF001
+
+    _hass_arg, metadata, _statistics = mock_add.call_args[0]
+    assert "unit_class" not in metadata
