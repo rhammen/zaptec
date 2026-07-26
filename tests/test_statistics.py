@@ -17,9 +17,12 @@ from custom_components.zaptec.statistics import (
     bucket_sessions_hourly,
 )
 from custom_components.zaptec.zaptec.exceptions import RequestError
-from tests.conftest import make_charger
+from tests.conftest import make_charger, setup_integration
 
 if TYPE_CHECKING:
+    from unittest.mock import MagicMock
+
+    from homeassistant.components.recorder import Recorder
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -526,3 +529,38 @@ async def test_metadata_omits_unit_class_when_unsupported(
 
     _hass_arg, metadata, _statistics = mock_add.call_args[0]
     assert "unit_class" not in metadata
+
+
+# --- setup wiring: recorder is an *after* dependency, not a hard one ----------
+
+
+async def test_integration_loads_without_recorder_and_skips_statistics(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """With no recorder, the integration still loads and simply skips the statistics feed.
+
+    Regression guard: `recorder` is declared as an `after_dependencies` entry
+    (not a hard `dependencies` one), so a user who has disabled the recorder
+    must still get the rest of the integration — a hard dependency would fail
+    the whole config entry. No recorder is set up here (this test does not
+    request `recorder_mock`).
+    """
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    assert manager.statistics_coordinators == {}
+
+
+async def test_statistics_coordinator_created_per_charger_with_recorder(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """With a recorder available, setup creates exactly one statistics coordinator per charger."""
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    assert set(manager.statistics_coordinators) == {"chg-mock-1"}

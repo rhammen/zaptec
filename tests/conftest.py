@@ -134,6 +134,12 @@ def make_charger(
     charger.get.side_effect = _backed_get(data)
     charger.is_charging.return_value = charging
     charger.installation = installation
+    # Empty archived-sessions page by default, so a ZaptecStatisticsCoordinator
+    # refresh during setup_integration (when a recorder is present) is a clean
+    # no-op. Statistics-specific tests override this with real session data.
+    charger.get_archived_sessions = AsyncMock(
+        return_value={"sessions": [], "cursor": None, "hasMore": False}
+    )
     return charger
 
 
