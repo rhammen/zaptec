@@ -6,6 +6,7 @@ import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.components.recorder import Recorder
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 import pytest
@@ -197,8 +198,15 @@ def mock_zaptec() -> MagicMock:
 
 
 @pytest.fixture
-def mock_config_entry() -> MockConfigEntry:
-    """A MockConfigEntry for the zaptec domain."""
+def mock_config_entry(recorder_mock: Recorder) -> MockConfigEntry:
+    """A MockConfigEntry for the zaptec domain.
+
+    Depends on `recorder_mock` so a recorder is available before setup: the
+    integration declares a hard `recorder` dependency in manifest.json (for the
+    energy-statistics feature), so `async_setup` won't start without one. Only
+    the HA-integration tests request this fixture, so the `tests/zaptec` leg
+    (plain pytest, no harness) never pulls the recorder in.
+    """
     return MockConfigEntry(
         domain=DOMAIN,
         title="Mock Zaptec",
