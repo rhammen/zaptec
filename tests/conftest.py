@@ -89,6 +89,9 @@ def make_charger(
 def make_installation(data: dict[str, Any], *, chargers: Iterable[MagicMock] = ()) -> MagicMock:
     """Build a spec'd Installation double backed by `data`."""
     install = MagicMock(spec=Installation)
+    # Installation is a Mapping, so `spec` alone gives the double a __len__ of 0 and
+    # makes it falsy, unlike any real populated installation.
+    install.__len__.return_value = len(data)
     install.id = data["id"]
     install.name = data.get("name", "Mock Installation")
     install.model = "Zaptec Installation"
