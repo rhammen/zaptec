@@ -167,6 +167,7 @@ Or by the snippet:
 
 ```py
 import json
+
 async with Zaptec(username, password) as zaptec:
     with open("constants.json", "w") as fp:
         json.dump(await zaptec.request("constants"), fp, indent=2)
