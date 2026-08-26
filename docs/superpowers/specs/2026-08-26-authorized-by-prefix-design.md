@@ -46,10 +46,18 @@ The uuid after `ble-` is byte-identical to `authorizedUser.id` on the archived
 session — i.e. the account's Zaptec user id, not anything HA-specific. Zaptec
 encodes the *authorization method* in the token prefix.
 
-The July spec already documented the `nfc-<id>` / `ble-<uuid>` shapes in its
-Problem section, but built recognition on timing anyway; nothing in the thread
-had confirmed the prefix was reliable enough to branch on. The capture above is
-that confirmation.
+The prefix convention is also stated by the maintainer in the issue thread,
+[#200 (comment), 2025-08-03](https://github.com/custom-components/zaptec/issues/200#issuecomment-3148728551):
+NFC-authenticated sessions read `nfc-xxxxxxxxxxxxxx`, while "Authorize charging"
+gives `ble-xxxxxxxx-bbbb-cccc-dddd-000000000000`. The July spec cited those
+shapes in its Problem section but built recognition on timing anyway. Between
+that comment and the capture above, branching on the prefix is well founded.
+
+The stale-value symptom the clearing fix addresses is independently reported on
+different hardware (Zaptec Go) in
+[#200 (comment), 2026-03-03](https://github.com/custom-components/zaptec/issues/200#issuecomment-3989612118):
+`charger_currrent_user_uuid` "not updating with the RFID as expected", with
+`AuthenticationCode` used instead.
 
 ### Why the old design was wrong, not merely complicated
 
