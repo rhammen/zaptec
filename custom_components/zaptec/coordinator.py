@@ -19,7 +19,7 @@ from .const import (
     ZAPTEC_POLL_CHARGER_TRIGGER_DELAYS,
     ZAPTEC_POLL_INSTALLATION_TRIGGER_DELAYS,
 )
-from .zaptec import Charger, Installation, Zaptec, ZaptecApiError, ZaptecBase
+from .zaptec import Charger, Installation, Zaptec, ZaptecApiError, ZaptecBase, has_write_role
 
 if TYPE_CHECKING:
     from .manager import ZaptecConfigEntry, ZaptecManager
@@ -126,12 +126,15 @@ class ZaptecUpdateCoordinator(DataUpdateCoordinator[None]):
             self._check_installation_role(self.options.zaptec_object)
 
     def _check_installation_role(self, installation: Installation) -> None:
-        """Create or clear a Repair issue for insufficient write access.
+        """Create or clear the Repair issues for insufficient write access.
 
         `installation/update` requires the Owner or Service role
-        (https://docs.zaptec.com/reference/api_installation_id_update_post).
-        If CurrentUserRoles hasn't been observed yet, leave any existing issue
-        alone rather than guessing.
+        (https://docs.zaptec.com/reference/api_installation_id_update_post),
+        as do `chargers/{id}/update` and `chargers/{id}/SendCommand/{id}`.
+        Roles are per object, so an account can be Owner on the installation
+        and User on one of its chargers; the two issues are mutually
+        exclusive, at most one per installation. If CurrentUserRoles hasn't
+        been observed yet, leave any existing issue alone rather than guessing.
 
         Deliberately calling async_create_issue() again every poll (rather
         than only on the first observation) is safe and intentional: HA's
@@ -147,22 +150,54 @@ class ZaptecUpdateCoordinator(DataUpdateCoordinator[None]):
         if roles is None:
             return
 
+        name = str(installation.get("name", installation.qual_id))
         issue_id = f"insufficient_role_{installation.id}"
-        if "Owner" in roles or "Maintainer" in roles:
-            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+        charger_issue_id = f"insufficient_charger_role_{installation.id}"
+
+        if has_write_role(roles) is False:
+            # The installation-level warning covers the account's access to this
+            # installation; naming individual chargers on top of it would only
+            # repeat the same remedy.
+            ir.async_delete_issue(self.hass, DOMAIN, charger_issue_id)
+            self._create_role_issue(
+                issue_id,
+                "insufficient_role",
+                {"installation_name": name, "role": roles or "None"},
+            )
             return
 
+        ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+
+        # Chargers carry their own roles, populated by Charger.poll_info(); one
+        # that hasn't been polled yet reports None and is left out rather than
+        # assumed restricted.
+        restricted = sorted(
+            str(charger.get("name", charger.qual_id))
+            for charger in installation.chargers
+            if has_write_role(charger.get("current_user_roles")) is False
+        )
+        if not restricted:
+            ir.async_delete_issue(self.hass, DOMAIN, charger_issue_id)
+            return
+
+        self._create_role_issue(
+            charger_issue_id,
+            "insufficient_charger_role",
+            {"installation_name": name, "chargers": ", ".join(restricted)},
+        )
+
+    def _create_role_issue(
+        self, issue_id: str, translation_key: str, placeholders: dict[str, str]
+    ) -> None:
+        """Raise a non-fixable warning pointing at the Zaptec Portal."""
         ir.async_create_issue(
             self.hass,
             DOMAIN,
             issue_id,
             is_fixable=False,
             severity=ir.IssueSeverity.WARNING,
-            translation_key="insufficient_role",
-            translation_placeholders={
-                "installation_name": str(installation.get("name", installation.qual_id)),
-                "role": roles or "None",
-            },
+            translation_key=translation_key,
+            translation_placeholders=placeholders,
             learn_more_url="https://portal.zaptec.com/",
         )
 

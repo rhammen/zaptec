@@ -54,9 +54,12 @@ Confirmed to work with Zaptec products
 > settings, or send a charger command (e.g. restart) will fail with a clear
 > error instead of a raw HTTP 403, and Home Assistant will show
 > a persistent notice under *Settings → Repairs* naming the affected
-> installation and the role it needs. If this is expected for your setup,
-> you can dismiss it with "Ignore" in the Repairs list — it won't come back
-> unless the account's role actually changes.
+> installation and the role it needs. Roles are granted per object, so an
+> account can be _Owner_ on an installation and _User_ on one of its chargers:
+> in that case the notice names the restricted chargers instead, one notice per
+> installation. If this is expected for your setup, you can dismiss it with
+> "Ignore" in the Repairs list — it won't come back unless the account's role
+> actually changes.
 
 # Known issues
 

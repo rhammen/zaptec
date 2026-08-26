@@ -66,6 +66,18 @@ TDict = dict[str, TValue]
 StreamCallback = Callable[[dict], Awaitable[None]]
 
 
+def has_write_role(roles: str | None) -> bool | None:
+    """Whether `CurrentUserRoles` permits writes, or None if not observed yet.
+
+    The Owner and Service (reported by the API as Maintainer) roles permit
+    writes; a not-yet-observed role is reported as None so callers can choose
+    between blocking and letting the API answer with its own 403.
+    """
+    if roles is None:
+        return None
+    return "Owner" in roles or "Maintainer" in roles
+
+
 class TLogExc(Protocol):
     """Protocol for logging exceptions."""
 
@@ -233,7 +245,7 @@ class ZaptecBase(Mapping[str, TValue]):
         they require.
         """
         roles = self.get("current_user_roles")
-        if roles is None or "Owner" in roles or "Maintainer" in roles:
+        if has_write_role(roles) is not False:
             return
         raise InsufficientRoleError(
             f"{action} requires the Owner or Service role on {self.qual_id} "

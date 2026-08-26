@@ -310,3 +310,86 @@ async def test_charger_coordinator_skips_the_role_check(
 
     charger_issue_id = f"insufficient_role_{CHARGER_DATA['id']}"
     assert ir.async_get(hass).async_get_issue(DOMAIN, charger_issue_id) is None
+
+
+# ---------------------------------------------------------------------------
+#   Restricted-charger Repair issue
+# ---------------------------------------------------------------------------
+
+CHARGER_ISSUE_ID = f"insufficient_charger_role_{INSTALLATION_DATA['id']}"
+
+
+async def test_restricted_charger_creates_a_charger_repair_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """An Owner installation holding a User-only charger warns about that charger."""
+    reseed(mock_zaptec.installations[0], INSTALLATION_DATA | {"current_user_roles": "Owner"})
+    reseed(mock_zaptec.chargers[0], CHARGER_DATA | {"current_user_roles": "User"})
+
+    await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, CHARGER_ISSUE_ID)
+    assert issue is not None
+    assert issue.translation_key == "insufficient_charger_role"
+    assert issue.translation_placeholders == {
+        "installation_name": "Mock Home",
+        "chargers": "Mock Charger",
+    }
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is None
+
+
+async def test_insufficient_installation_role_supersedes_the_charger_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """The two issues are mutually exclusive; the installation one wins."""
+    installation = mock_zaptec.installations[0]
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "Owner"})
+    reseed(mock_zaptec.chargers[0], CHARGER_DATA | {"current_user_roles": "User"})
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, CHARGER_ISSUE_ID) is not None
+
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "User"})
+    await manager.device_coordinators[INSTALLATION_DATA["id"]].async_refresh()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is not None
+    assert ir.async_get(hass).async_get_issue(DOMAIN, CHARGER_ISSUE_ID) is None
+
+
+async def test_charger_issue_clears_when_the_charger_role_is_granted(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """Granting Service on the charger removes the charger issue on the next poll."""
+    charger = mock_zaptec.chargers[0]
+    reseed(mock_zaptec.installations[0], INSTALLATION_DATA | {"current_user_roles": "Owner"})
+    reseed(charger, CHARGER_DATA | {"current_user_roles": "User"})
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, CHARGER_ISSUE_ID) is not None
+
+    reseed(charger, CHARGER_DATA | {"current_user_roles": "Maintainer"})
+    await manager.device_coordinators[INSTALLATION_DATA["id"]].async_refresh()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, CHARGER_ISSUE_ID) is None
+
+
+async def test_charger_with_unobserved_role_is_not_reported(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """A charger that hasn't been polled yet is left out, not assumed restricted."""
+    reseed(mock_zaptec.installations[0], INSTALLATION_DATA | {"current_user_roles": "Owner"})
+    reseed(mock_zaptec.chargers[0], CHARGER_DATA)
+
+    await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, CHARGER_ISSUE_ID) is None
