@@ -4,16 +4,18 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.zaptec.const import (
+    DOMAIN,
     ZAPTEC_POLL_INTERVAL_CHARGING,
     ZAPTEC_POLL_INTERVAL_IDLE,
 )
 from custom_components.zaptec.coordinator import ZaptecUpdateCoordinator, ZaptecUpdateOptions
 from custom_components.zaptec.zaptec import ZaptecApiError
-from tests.conftest import setup_integration
+from tests.conftest import CHARGER_DATA, INSTALLATION_DATA, reseed, setup_integration
 
 
 async def test_successful_poll_marks_last_update_success(
@@ -182,3 +184,129 @@ async def test_trigger_poll_triggers_child_charger_coordinators(
     await hass.async_block_till_done()
 
     charger_coord.trigger_poll.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+#   Insufficient-role Repair issue (#311)
+# ---------------------------------------------------------------------------
+
+ISSUE_ID = f"insufficient_role_{INSTALLATION_DATA['id']}"
+
+
+async def test_insufficient_role_creates_repair_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """A User-only installation gets a Repair issue after the first poll."""
+    reseed(mock_zaptec.installations[0], INSTALLATION_DATA | {"current_user_roles": "User"})
+
+    await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID)
+    assert issue is not None
+    assert issue.severity is ir.IssueSeverity.WARNING
+    assert issue.translation_key == "insufficient_role"
+    assert issue.translation_placeholders == {"installation_name": "Mock Home", "role": "User"}
+    # A repair flow this integration never registers would break the Repairs dialog.
+    assert issue.is_fixable is False
+    assert issue.learn_more_url == "https://portal.zaptec.com/"
+
+
+async def test_repeated_polls_preserve_an_ignored_repair_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """Polling again with an unchanged role keeps the user's "Ignore" dismissal.
+
+    Regression guard for the "don't nag aware users" requirement: a
+    delete-then-recreate cycle would reset dismissed_version.
+    """
+    installation = mock_zaptec.installations[0]
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "User"})
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+    coordinator = manager.device_coordinators[INSTALLATION_DATA["id"]]
+
+    ir.async_ignore_issue(hass, DOMAIN, ISSUE_ID, ignore=True)
+    dismissed_version = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID).dismissed_version
+    assert dismissed_version is not None
+
+    await coordinator.async_refresh()
+    # Vary the role within "still insufficient": the updated placeholder proves the
+    # check ran again, so the preserved dismissal can't pass by the issue being untouched.
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "User, Guest"})
+    await coordinator.async_refresh()
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID)
+    assert issue is not None
+    assert issue.translation_placeholders["role"] == "User, Guest"
+    assert issue.dismissed_version == dismissed_version
+
+
+async def test_sufficient_role_clears_the_repair_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """Regaining the Owner role removes an existing Repair issue on the next poll."""
+    installation = mock_zaptec.installations[0]
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "User"})
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is not None
+
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "Owner"})
+    await manager.device_coordinators[INSTALLATION_DATA["id"]].async_refresh()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is None
+
+
+async def test_unknown_role_creates_no_repair_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """No CurrentUserRoles observed yet -> no issue either way."""
+    reseed(mock_zaptec.installations[0], INSTALLATION_DATA)
+
+    await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is None
+
+
+async def test_unknown_role_leaves_an_existing_repair_issue(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """A poll that no longer observes CurrentUserRoles must not clear the issue."""
+    installation = mock_zaptec.installations[0]
+    reseed(installation, INSTALLATION_DATA | {"current_user_roles": "User"})
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is not None
+
+    reseed(installation, INSTALLATION_DATA)
+    await manager.device_coordinators[INSTALLATION_DATA["id"]].async_refresh()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is not None
+
+
+async def test_charger_coordinator_skips_the_role_check(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_zaptec: MagicMock,
+    enable_custom_integrations: None,
+) -> None:
+    """The role check is Installation-scoped: a charger poll never raises an issue."""
+    reseed(mock_zaptec.chargers[0], CHARGER_DATA | {"current_user_roles": "User"})
+    manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
+
+    await manager.device_coordinators[CHARGER_DATA["id"]].async_refresh()
+
+    charger_issue_id = f"insufficient_role_{CHARGER_DATA['id']}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, charger_issue_id) is None

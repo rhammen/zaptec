@@ -12,7 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.zaptec.const import DOMAIN
 from custom_components.zaptec.manager import ZaptecManager
-from custom_components.zaptec.zaptec import MISSING, Charger, Installation
+from custom_components.zaptec.zaptec import Charger, Installation
 from custom_components.zaptec.zaptec.api import Zaptec
 from custom_components.zaptec.zaptec.utils import to_under
 
@@ -54,17 +54,37 @@ def zaptec_password(skip_if_user_disabled_api_tests, skip_if_in_github_actions) 
 
 
 def _backed_get(data: dict[str, Any]) -> Callable[..., Any]:
-    """Return a `.get(key, default=MISSING)` implementation backed by `data`.
+    """Return a `.get()` implementation backed by `data`.
 
-    Mirrors `ZaptecBase.__getitem__`'s key normalization (`to_under`); defaults
-    to `MISSING` rather than `Mapping.get`'s `None` since every real call site
-    (`entity.py`'s `_get_zaptec_value`) passes `default=MISSING` explicitly.
+    Mirrors `ZaptecBase.__getitem__`'s key normalization (`to_under`) and
+    `Mapping.get`'s `None` default, which production code relies on (e.g.
+    `coordinator.py`'s `installation.get("current_user_roles")`).
     """
 
-    def _get(key: str, default: Any = MISSING) -> Any:
+    def _get(key: str, default: Any = None) -> Any:
         return data.get(to_under(key), default)
 
     return _get
+
+
+def reseed(obj: MagicMock, data: dict[str, Any]) -> None:
+    """Replace the backing data of a double built by `make_charger`/`make_installation`.
+
+    Pass `INSTALLATION_DATA | {...}` / `CHARGER_DATA | {...}` rather than a bare
+    dict, so a test keeps the fixture's seeded keys instead of stripping them.
+    """
+    obj.get.side_effect = _backed_get(data)
+
+
+INSTALLATION_DATA = {"id": "inst-mock-1", "name": "Mock Home"}
+
+CHARGER_DATA = {
+    "id": "chg-mock-1",
+    "name": "Mock Charger",
+    # Keys read by entities under test; extend as needed for coverage.
+    "operating_mode": "Connected",
+    "charger_operation_mode": "Connected",
+}
 
 
 def make_charger(
@@ -108,18 +128,8 @@ def mock_zaptec() -> MagicMock:
     is itself `Mapping[str, ZaptecBase]` in production, and real code (e.g.
     `zaptec[deviceid]` in `__init__.py`/`coordinator.py`) indexes into it directly.
     """
-    installation = make_installation({"id": "inst-mock-1", "name": "Mock Home"})
-    charger = make_charger(
-        {
-            "id": "chg-mock-1",
-            "name": "Mock Charger",
-            # Keys read by entities under test; extend as needed for coverage.
-            "operating_mode": "Connected",
-            "charger_operation_mode": "Connected",
-        },
-        installation=installation,
-        charging=False,
-    )
+    installation = make_installation(dict(INSTALLATION_DATA))
+    charger = make_charger(dict(CHARGER_DATA), installation=installation, charging=False)
     installation.chargers = [charger]
 
     objects = {installation.id: installation, charger.id: charger}
