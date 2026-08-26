@@ -98,6 +98,9 @@
                     "webhooks": "Webhooks"
                 }
             },
+            "authorized_by": {
+                "name": "Autorisert av"
+            },
             "available_current_phase1": {
                 "name": "Tilgjengelig strøm fase 1"
             },
@@ -119,6 +122,9 @@
                     "disconnected": "Frakoblet",
                     "unknown": "Ukjent"
                 }
+            },
+            "completed_session_authorized_by": {
+                "name": "Siste økt autorisert av"
             },
             "completed_session_energy": {
                 "name": "Energiforbruk etter fullført økt"

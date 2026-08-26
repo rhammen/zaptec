@@ -98,6 +98,9 @@
                     "webhooks": "Web Hooks"
                 }
             },
+            "authorized_by": {
+                "name": "Auktoriserad av"
+            },
             "available_current_phase1": {
                 "name": "Tillgänglig ström fas 1"
             },
@@ -119,6 +122,9 @@
                     "disconnected": "Frånkopplad",
                     "unknown": "Okänt"
                 }
+            },
+            "completed_session_authorized_by": {
+                "name": "Senaste sessionen auktoriserad av"
             },
             "completed_session_energy": {
                 "name": "Energiförbrukning denna laddningen"
