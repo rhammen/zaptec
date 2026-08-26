@@ -1,5 +1,10 @@
 # Authorized-By Sensor Implementation Plan
 
+> **Superseded in part (2026-08-26):** the self-authorization recognition
+> described here was replaced by token-prefix classification. See
+> [2026-08-26-authorized-by-prefix-design.md](../specs/2026-08-26-authorized-by-prefix-design.md).
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Expose which RFID/NFC/BLE token (or, when triggered from Home Assistant itself, a recognizable "Home Assistant" label) authorized a charging session, via two new sensor entities on the charger device.

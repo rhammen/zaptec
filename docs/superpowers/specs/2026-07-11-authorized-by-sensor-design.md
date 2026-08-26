@@ -1,5 +1,10 @@
 # Design: "Authorized by" sensors (issue #200)
 
+> **Superseded in part (2026-08-26):** the self-authorization recognition
+> described here was replaced by token-prefix classification. See
+> [2026-08-26-authorized-by-prefix-design.md](2026-08-26-authorized-by-prefix-design.md).
+
+
 ## Problem
 
 [Issue #200](https://github.com/custom-components/zaptec/issues/200) asks to
