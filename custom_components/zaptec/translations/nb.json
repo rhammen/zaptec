@@ -198,7 +198,7 @@
             "message": "{action} mislyktes."
         },
         "api_error_apm": {
-            "message": "{action} mislyktes: den forespurte innstillingen kan ikke endres mens installasjonen bruker Zaptec Sense (eller lignende effektstyring)."
+            "message": "{action} mislyktes: den forespurte innstillingen kan ikke endres mens installasjonen bruker Automatisk lading (Zaptec Sense eller lignende effektstyring)."
         },
         "api_error_charger_state": {
             "message": "{action} mislyktes: laderens nåværende tilstand tillater ikke denne handlingen."
@@ -213,7 +213,7 @@
             "message": "{action} mislyktes: {details}"
         },
         "api_error_scheduled": {
-            "message": "{action} mislyktes: den forespurte innstillingen kan ikke endres mens installasjonen bruker planlagt lading."
+            "message": "{action} mislyktes: den forespurte innstillingen kan ikke endres mens installasjonen bruker Planlagt lading."
         }
     }
 }
