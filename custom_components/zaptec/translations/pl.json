@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} nie powiodło się: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} nie powiodło się: nie można zmienić żądanego ustawienia, gdy instalacja korzysta z ładowania zaplanowanego."
         }
     }
 }

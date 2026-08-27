@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} mislukkast: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} mislukkast: den førespurde innstillinga kan ikkje endrast medan installasjonen brukar planlagd lading."
         }
     }
 }

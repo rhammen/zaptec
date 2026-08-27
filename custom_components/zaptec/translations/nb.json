@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} mislyktes: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} mislyktes: den forespurte innstillingen kan ikke endres mens installasjonen bruker planlagt lading."
         }
     }
 }

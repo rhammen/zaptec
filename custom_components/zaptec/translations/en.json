@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} failed: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} failed: cannot change the requested setting while the installation is using scheduled charging."
         }
     }
 }

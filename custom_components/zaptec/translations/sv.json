@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} misslyckades: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} misslyckades: den begärda inställningen kan inte ändras medan installationen använder schemalagd laddning."
         }
     }
 }

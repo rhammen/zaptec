@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} is mislukt: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} is mislukt: de gevraagde instelling kan niet worden gewijzigd zolang de installatie gepland laden gebruikt."
         }
     }
 }

@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} a échoué : {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} a échoué : impossible de modifier le réglage demandé tant que l'installation utilise la recharge programmée."
         }
     }
 }

@@ -46,6 +46,17 @@ def test_non_string_details_do_not_crash() -> None:
     assert err.translation_placeholders == {"action": "Set X", "reason": "999999"}
 
 
+def test_scheduled_charging_has_its_own_message() -> None:
+    """Scheduled charging blocks installation updates with its own 527 reason."""
+    err = api_call_error(
+        _request_error(527, "Cannot update installation when using scheduled power management"),
+        "Set X",
+    )
+
+    assert err.translation_key == "api_error_scheduled"
+    assert err.translation_placeholders == {"action": "Set X"}
+
+
 def test_unrelated_apm_mention_is_not_claimed_to_be_sense() -> None:
     """Only the known sentence maps to Sense; other APM reasons show verbatim."""
     err = api_call_error(_request_error(527, "APM device is offline"), "Set X")

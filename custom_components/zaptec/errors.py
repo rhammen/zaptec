@@ -13,11 +13,12 @@ from .zaptec.zconst import ZCONST
 CODE_DEVICE_COMMAND_REJECTED = 528
 CODE_OPERATION_FAILED_DUE_TO_CHARGER_STATE = 538
 
-# The Details text Zaptec sends when power management blocks an installation
-# update. Matched on the phrase, not just "APM", so that other APM-related
-# reasons fall through and are shown verbatim instead of being called out as
-# a Zaptec Sense restriction.
+# Details phrases Zaptec sends when the installation's charging mode blocks an
+# update: "Automatic" (managed by Zaptec Sense) and "Scheduled" in the Zaptec
+# app. Matched on the phrase so that any other reason falls through and is
+# shown verbatim rather than being attributed to the wrong mode.
 APM_IN_USE = "when using APM"
+SCHEDULED_IN_USE = "scheduled power management"
 
 
 def api_call_error(exc: Exception, action: str) -> HomeAssistantError:
@@ -40,6 +41,8 @@ def api_call_error(exc: Exception, action: str) -> HomeAssistantError:
     elif details and APM_IN_USE in details:
         # Zaptec calls it APM in the API, but users know it as Zaptec Sense.
         key = "api_error_apm"
+    elif details and SCHEDULED_IN_USE in details:
+        key = "api_error_scheduled"
     elif details:
         key = "api_error_details"
         placeholders["details"] = details

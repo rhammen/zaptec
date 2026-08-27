@@ -211,6 +211,9 @@
         },
         "api_error_details": {
             "message": "{action} fehlgeschlagen: {details}"
+        },
+        "api_error_scheduled": {
+            "message": "{action} fehlgeschlagen: Die angeforderte Einstellung kann nicht geändert werden, solange die Installation zeitgesteuertes Laden verwendet."
         }
     }
 }
