@@ -128,14 +128,18 @@ async def test_stream_supervisor_resets_backoff_after_stable_connection(
         raise ConnectionError("boom")
 
     install.stream_main.side_effect = stream_main
-    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep_mock)
     monkeypatch.setattr(manager_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(manager_module.random, "normalvariate", lambda mu, sigma: mu)  # noqa: ARG005
 
     with caplog.at_level(logging.DEBUG, logger="custom_components.zaptec.manager"):
         await _stream_supervisor(install, cb=AsyncMock(), ssl_context=None)
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2  # noqa: PLR2004  # both failures counted as separate outages
+    (last_delay,), _ = sleep_mock.await_args_list[-1]
+    assert last_delay == pytest.approx(STREAM_RECONNECT_INIT_DELAY)  # backoff restarted too
 
 
 @pytest.mark.asyncio
@@ -160,7 +164,7 @@ async def test_stream_supervisor_logs_reconnect_count_on_connect(
 
     infos = [r for r in caplog.records if r.levelno == logging.INFO]
     assert len(infos) == 1
-    assert infos[0].args[1] == 2  # noqa: PLR2004
+    assert "after 2 reconnect attempt(s)" in infos[0].getMessage()
 
 
 @pytest.mark.asyncio
@@ -180,3 +184,53 @@ async def test_stream_supervisor_logs_traceback_only_for_unexpected_errors(
 
         (warning,) = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert bool(warning.exc_info) is has_traceback
+
+
+@pytest.mark.asyncio
+async def test_stream_supervisor_stays_quiet_when_the_first_connect_succeeds(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Connecting without ever having failed reports no reconnect count."""
+    install = _fake_install()
+
+    async def stream_main(*, on_connect: Callable[[], None], **kwargs: object) -> None:
+        on_connect()
+
+    install.stream_main.side_effect = stream_main
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.zaptec.manager"):
+        await _stream_supervisor(install, cb=AsyncMock(), ssl_context=None)
+
+    assert not [r for r in caplog.records if r.levelno == logging.INFO]
+
+
+@pytest.mark.asyncio
+async def test_stream_supervisor_does_not_reset_when_the_retry_never_connects(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The uptime of an earlier connection must not carry over to a later attempt."""
+    install = _fake_install()
+    now = 0.0
+    # Connect and stay up past the stable time, then fail without connecting at all.
+    attempts = iter([True, False])
+
+    async def stream_main(*, on_connect: Callable[[], None], **kwargs: object) -> None:
+        nonlocal now
+        connects = next(attempts, None)
+        if connects is None:
+            return  # permanent stop, ends the supervisor loop
+        if connects:
+            on_connect()
+        now += STREAM_RECONNECT_STABLE_TIME + 1
+        raise ConnectionError("boom")
+
+    install.stream_main.side_effect = stream_main
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+    monkeypatch.setattr(manager_module.time, "monotonic", lambda: now)
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.zaptec.manager"):
+        await _stream_supervisor(install, cb=AsyncMock(), ssl_context=None)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1  # the second failure never connected, so it is the same outage

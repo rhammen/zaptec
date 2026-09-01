@@ -18,7 +18,7 @@ from typing import Any, ClassVar, Protocol, Self
 import aiohttp
 from aiolimiter import AsyncLimiter
 from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus.exceptions import ServiceBusError
+from azure.servicebus.exceptions import MessageAlreadySettled, ServiceBusError
 import pydantic
 
 from .const import (
@@ -46,6 +46,7 @@ from .exceptions import (
     RequestError,
     RequestRetryError,
     RequestTimeoutError,
+    ZaptecApiError,
 )
 from .redact import Redactor
 from .utils import mc_nbfx_decoder, to_under
@@ -66,12 +67,11 @@ StreamCallback = Callable[[dict], Awaitable[None]]
 
 STREAM_TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
     ServiceBusError,
+    MessageAlreadySettled,  # a ValueError, not a ServiceBusError
     OSError,  # includes ConnectionError
     TimeoutError,
     aiohttp.ClientError,
-    RequestConnectionError,
-    RequestRetryError,
-    RequestTimeoutError,
+    ZaptecApiError,
 )
 """Errors a dropped stream is expected to fail with, e.g. a network outage."""
 
@@ -446,11 +446,11 @@ class Installation(ZaptecBase):
                     subscription_name=conf["Subscription"],
                 )
                 _LOGGER.info("Running service bus stream for %s", self.qual_id)
-                if on_connect:
-                    on_connect()
                 # Store the receiver in order to close it and cancel this stream
                 self._stream_receiver = receiver
                 async with receiver:
+                    if on_connect:
+                        on_connect()
                     async for msg in receiver:
                         # For the exception in case it fails before setting the value
                         binmsg = "<unknown>"

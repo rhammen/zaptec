@@ -82,7 +82,6 @@ async def _stream_supervisor(
             ):
                 delay = STREAM_RECONNECT_INIT_DELAY
                 reconnects = 0
-            # Only an unexpected failure is worth a traceback at warning level.
             unexpected = not isinstance(err, STREAM_TRANSIENT_ERRORS)
             if reconnects:
                 _LOGGER.debug(
