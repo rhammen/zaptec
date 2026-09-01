@@ -48,6 +48,9 @@ STREAM_RECONNECT_JITTER = 0.1
 STREAM_RECONNECT_MAX_DELAY = 300.0
 """Maximum delay in seconds between stream reconnect attempts (5 minutes)."""
 
+STREAM_RECONNECT_STABLE_TIME = 60.0
+"""Uptime in seconds after which a stream connection counts as healthy again."""
+
 # This sets the delay after doing actions and the poll of updated values.
 # It was 0.3 and evidently that is a bit too fast for Zaptec cloud to handle.
 REQUEST_REFRESH_DELAY = 1

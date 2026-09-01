@@ -386,7 +386,10 @@ class Installation(ZaptecBase):
         _LOGGER.debug("@@@  EVENT %s", self.zaptec.redact(data))
 
     async def stream_main(
-        self, cb: StreamCallback | None = None, ssl_context: ssl.SSLContext | None = None
+        self,
+        cb: StreamCallback | None = None,
+        ssl_context: ssl.SSLContext | None = None,
+        on_connect: Callable[[], None] | None = None,
     ) -> None:
         """Main stream handler."""
         # Already running?
@@ -432,6 +435,8 @@ class Installation(ZaptecBase):
                     subscription_name=conf["Subscription"],
                 )
                 _LOGGER.info("Running service bus stream for %s", self.qual_id)
+                if on_connect:
+                    on_connect()
                 # Store the receiver in order to close it and cancel this stream
                 self._stream_receiver = receiver
                 async with receiver:

@@ -26,6 +26,7 @@ from .const import (
     STREAM_RECONNECT_INIT_DELAY,
     STREAM_RECONNECT_JITTER,
     STREAM_RECONNECT_MAX_DELAY,
+    STREAM_RECONNECT_STABLE_TIME,
 )
 from .coordinator import ZaptecUpdateCoordinator
 from .entity import KeyUnavailableError, ZaptecBaseEntity
@@ -56,24 +57,38 @@ async def _stream_supervisor(
     cancellation still stops this immediately.
     """
     delay = STREAM_RECONNECT_INIT_DELAY
-    warned = False
-    while True:
+    reconnects = 0
+    connected_at: float | None = None
+
+    def on_connect() -> None:
+        nonlocal connected_at
         connected_at = time.monotonic()
+        if reconnects:
+            _LOGGER.info(
+                "Stream for %s connected after %s reconnect attempt(s)",
+                install.qual_id,
+                reconnects,
+            )
+
+    while True:
+        connected_at = None
         try:
-            await install.stream_main(cb=cb, ssl_context=ssl_context)
+            await install.stream_main(cb=cb, ssl_context=ssl_context, on_connect=on_connect)
         except Exception:
-            if time.monotonic() - connected_at >= STREAM_RECONNECT_MAX_DELAY:
-                # The previous connection lived long enough to count this
-                # as a fresh outage rather than a continuation of the last.
+            # A connection that stayed up counts as recovered, so the next
+            # failure starts a fresh outage instead of continuing the last.
+            if connected_at is not None and (
+                time.monotonic() - connected_at >= STREAM_RECONNECT_STABLE_TIME
+            ):
                 delay = STREAM_RECONNECT_INIT_DELAY
-                warned = False
-            if not warned:
+                reconnects = 0
+            if reconnects:
+                _LOGGER.debug("Stream for %s still reconnecting", install.qual_id, exc_info=True)
+            else:
                 _LOGGER.warning(
                     "Stream for %s disconnected, reconnecting", install.qual_id, exc_info=True
                 )
-                warned = True
-            else:
-                _LOGGER.debug("Stream for %s still reconnecting", install.qual_id, exc_info=True)
+            reconnects += 1
             await asyncio.sleep(delay)
             delay = min(delay * STREAM_RECONNECT_FACTOR, STREAM_RECONNECT_MAX_DELAY)
             delay = random.normalvariate(delay, delay * STREAM_RECONNECT_JITTER)

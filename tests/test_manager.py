@@ -1,6 +1,7 @@
 """Tests for custom_components.zaptec.manager."""
 
 import asyncio
+from collections.abc import Callable
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -11,6 +12,7 @@ from custom_components.zaptec import manager as manager_module
 from custom_components.zaptec.manager import (
     STREAM_RECONNECT_INIT_DELAY,
     STREAM_RECONNECT_MAX_DELAY,
+    STREAM_RECONNECT_STABLE_TIME,
     _stream_supervisor,
 )
 
@@ -101,29 +103,61 @@ async def test_stream_supervisor_logs_warning_once_then_debug(
 
 
 @pytest.mark.asyncio
-async def test_stream_supervisor_resets_backoff_after_long_lived_connection(
+async def test_stream_supervisor_resets_backoff_after_stable_connection(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A connection that outlived the max backoff delay counts as a fresh outage.
+    """A connection that stayed up past the stable time counts as a fresh outage.
 
     Verified via logging: a failure treated as a new outage warns again (see
     test_stream_supervisor_logs_warning_once_then_debug for the same-outage
     case, which stays at DEBUG).
     """
     install = _fake_install()
-    install.stream_main.side_effect = [ConnectionError("1"), ConnectionError("2"), None]
+    now = 0.0
+    # Fail, then hold a connection past the stable time before failing again.
+    attempts = iter([False, True])
+
+    async def stream_main(*, on_connect: Callable[[], None], **kwargs: object) -> None:
+        nonlocal now
+        connects = next(attempts, None)
+        if connects is None:
+            return  # permanent stop, ends the supervisor loop
+        if connects:
+            on_connect()
+            now += STREAM_RECONNECT_STABLE_TIME + 1
+        raise ConnectionError("boom")
+
+    install.stream_main.side_effect = stream_main
     monkeypatch.setattr(asyncio, "sleep", AsyncMock())
-    monkeypatch.setattr(manager_module, "STREAM_RECONNECT_MAX_DELAY", 100.0)
-    # 5 monotonic() calls: connected_at + failure-check per failed attempt (x2),
-    # then connected_at for the successful 3rd. Attempt 2's gap (0.0 -> 200.0)
-    # exceeds MAX_DELAY (100.0), so it counts as a new outage.
-    # Fallback (not bare next(clock)): Windows' ProactorEventLoop calls
-    # monotonic() more times during teardown, after the coroutine has returned.
-    clock = iter([0.0, 0.0, 0.0, 200.0, 500.0])
-    monkeypatch.setattr(manager_module.time, "monotonic", lambda: next(clock, 500.0))
+    monkeypatch.setattr(manager_module.time, "monotonic", lambda: now)
 
     with caplog.at_level(logging.DEBUG, logger="custom_components.zaptec.manager"):
         await _stream_supervisor(install, cb=AsyncMock(), ssl_context=None)
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2  # noqa: PLR2004  # both failures counted as separate outages
+
+
+@pytest.mark.asyncio
+async def test_stream_supervisor_logs_reconnect_count_on_connect(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Reconnecting logs how many attempts it took; the first connect stays quiet."""
+    install = _fake_install()
+    outcomes = iter([ConnectionError("1"), ConnectionError("2")])
+
+    async def stream_main(*, on_connect: Callable[[], None], **kwargs: object) -> None:
+        outcome = next(outcomes, None)
+        if isinstance(outcome, Exception):
+            raise outcome
+        on_connect()
+
+    install.stream_main.side_effect = stream_main
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.zaptec.manager"):
+        await _stream_supervisor(install, cb=AsyncMock(), ssl_context=None)
+
+    infos = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert len(infos) == 1
+    assert infos[0].args[1] == 2  # noqa: PLR2004
