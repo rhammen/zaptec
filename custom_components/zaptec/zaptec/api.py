@@ -64,6 +64,17 @@ TValue = str | int | float | bool
 TDict = dict[str, TValue]
 StreamCallback = Callable[[dict], Awaitable[None]]
 
+STREAM_TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
+    ServiceBusError,
+    OSError,  # includes ConnectionError
+    TimeoutError,
+    aiohttp.ClientError,
+    RequestConnectionError,
+    RequestRetryError,
+    RequestTimeoutError,
+)
+"""Errors a dropped stream is expected to fail with, e.g. a network outage."""
+
 
 class TLogExc(Protocol):
     """Protocol for logging exceptions."""

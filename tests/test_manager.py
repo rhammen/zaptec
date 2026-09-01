@@ -161,3 +161,22 @@ async def test_stream_supervisor_logs_reconnect_count_on_connect(
     infos = [r for r in caplog.records if r.levelno == logging.INFO]
     assert len(infos) == 1
     assert infos[0].args[1] == 2  # noqa: PLR2004
+
+
+@pytest.mark.asyncio
+async def test_stream_supervisor_logs_traceback_only_for_unexpected_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An expected disconnect warns without a traceback; anything else keeps one."""
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    for error, has_traceback in ((ConnectionError("boom"), False), (ValueError("boom"), True)):
+        install = _fake_install()
+        install.stream_main.side_effect = [error, None]
+        caplog.clear()
+
+        with caplog.at_level(logging.DEBUG, logger="custom_components.zaptec.manager"):
+            await _stream_supervisor(install, cb=AsyncMock(), ssl_context=None)
+
+        (warning,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert bool(warning.exc_info) is has_traceback

@@ -30,7 +30,7 @@ from .const import (
 )
 from .coordinator import ZaptecUpdateCoordinator
 from .entity import KeyUnavailableError, ZaptecBaseEntity
-from .zaptec import Charger, Installation, Zaptec, ZaptecBase
+from .zaptec import STREAM_TRANSIENT_ERRORS, Charger, Installation, Zaptec, ZaptecBase
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ async def _stream_supervisor(
         connected_at = None
         try:
             await install.stream_main(cb=cb, ssl_context=ssl_context, on_connect=on_connect)
-        except Exception:
+        except Exception as err:
             # A connection that stayed up counts as recovered, so the next
             # failure starts a fresh outage instead of continuing the last.
             if connected_at is not None and (
@@ -82,11 +82,18 @@ async def _stream_supervisor(
             ):
                 delay = STREAM_RECONNECT_INIT_DELAY
                 reconnects = 0
+            # Only an unexpected failure is worth a traceback at warning level.
+            unexpected = not isinstance(err, STREAM_TRANSIENT_ERRORS)
             if reconnects:
-                _LOGGER.debug("Stream for %s still reconnecting", install.qual_id, exc_info=True)
+                _LOGGER.debug(
+                    "Stream for %s still reconnecting (%r)", install.qual_id, err, exc_info=True
+                )
             else:
                 _LOGGER.warning(
-                    "Stream for %s disconnected, reconnecting", install.qual_id, exc_info=True
+                    "Stream for %s disconnected (%r), reconnecting",
+                    install.qual_id,
+                    err,
+                    exc_info=unexpected,
                 )
             reconnects += 1
             await asyncio.sleep(delay)
