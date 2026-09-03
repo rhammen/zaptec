@@ -54,12 +54,14 @@ No new `ZapNumberEntityDescription` fields are needed since there are only two c
 
 ### 3. Tests
 
-Add `tests/test_number.py` (no tests currently exist for `number.py`). Cover:
-- The `charger_min_current` entity description declares `native_min_value == MIN_CHARGE_CURRENT`, while `available_current` and `three_to_one_phase_switch_current` still declare `native_min_value == 0`.
-- Setting `charger_min_current` above the current `charger_max_current` raises `HomeAssistantError` and does not call `set_settings`.
-- Setting `charger_max_current` below the current `charger_min_current` raises `HomeAssistantError` and does not call `set_settings`.
-- Setting either value when the sibling is unavailable (`None`) proceeds normally (calls `set_settings`).
-- A valid combination (e.g. raising both min and max together, or a value that satisfies the existing sibling) succeeds normally.
+Add `tests/test_number.py` (no tests currently exist for `number.py`), covering the declared floors only: `charger_min_current` declares `native_min_value == MIN_CHARGE_CURRENT`, while `available_current`, `three_to_one_phase_switch_current` and `charger_max_current` still declare `native_min_value == 0`. One `pytest.mark.parametrize` with named `pytest.param` ids, per `AGENTS.md`.
+
+**The relational check is deliberately shipped without tests on this branch.** Testing it means driving `async_set_native_value`, and master has no test harness: `tests/` holds no entity-level tests and no `mock_zaptec` fixture, so the only option here is to instantiate the entity directly against hand-rolled fakes. That is the style sveinse asked to move away from in his review of #394 ("what testing facilities exist in HA that can assist us?"), which #414 exists to replace. Basing this branch on #414 instead would block an independent bugfix behind the largest open PR, and several branches already queue behind it.
+
+So the entity-level cases below are deferred to a follow-up once #414 merges, written against `setup_integration`/`mock_zaptec` and asserting through `hass.services.async_call` + `pytest.raises(HomeAssistantError)` rather than a mocked `set_settings`:
+- min above the current max, and max below the current min, are both rejected and never reach the API.
+- `min == max` is accepted (the constraint is `>=`, not `>`).
+- A sibling that is missing, or left as a raw non-numeric value by a failed type conversion, skips the check rather than blocking or raising `TypeError`.
 
 ## Non-goals
 
