@@ -11,17 +11,20 @@ Upstream issue [custom-components/zaptec#289](https://github.com/custom-componen
 
 However, a maintainer (sveinse) pointed out that Zaptec's own docs describe setting `ThreeToOnePhaseSwitchCurrent` to `0` intentionally, to force 3-phase charging. This directly contradicts the blanket "must be >= 6A" recommendation for that one field, and the discrepancy is explicitly unresolved (deferred to upstream #192, which asks Zaptec for a canonical list of integrator-side validation rules).
 
-This design implements only what's actually confirmed and non-contradictory, leaving the disputed field untouched.
+`AvailableCurrent = 0` is a second such case. It is not a charging current at all but a regularly used way to hold the charger off — setting the installation's available current to 0 and back up again is a common pattern for solar-surplus and load-balancing automations. A 6A floor there would reject those calls at the `number.set_value` service layer and break existing user automations, so the blanket ">= 6A" advice does not hold for this field either.
+
+This design implements only what's actually confirmed and non-contradictory, leaving the disputed fields untouched.
 
 ## Scope
 
 In scope:
-- Raise `native_min_value` from `0` to `6` for `available_current` and `charger_min_current`.
+- Raise `native_min_value` from `0` to `6` for `charger_min_current`.
 - Add a runtime check that `charger_max_current >= charger_min_current` when either is set via `number.set_value`.
 
 Out of scope (explicitly deferred, not silently dropped):
 - `three_to_one_phase_switch_current` keeps `native_min_value=0` — the "0 forces 3-phase" behavior is documented by Zaptec and would break if we imposed a 6A floor here.
-- `charger_max_current` does not get its own static 6A floor — its constraint is relational (>= min), not absolute. Once `charger_min_current`'s floor is 6A, the relational check transitively keeps `charger_max_current` >= 6A in practice.
+- `available_current` keeps `native_min_value=0` — see above; 0 is a regularly used way to hold the charger off. Rejecting 1-5A there while still allowing 0 was considered and dropped: it would need custom validation in `async_set_native_value` (the static floor cannot express "0 or >= 6"), for a range the Portal itself does not clearly reject, and the field is written by automations far more often than by hand.
+- `charger_max_current` does not get its own static 6A floor — its constraint is relational (>= min), not absolute. The relational check keeps `charger_max_current` >= whatever `charger_min_current` currently *is*; note that raising the floor changes the writable range, not the stored value, so a charger already reporting a min of 0 (the #289 scenario) still accepts a max below 6A until the user raises its min. Once min has been set through HA (now >= 6A), max is transitively floored at 6A too.
 
 ## Implementation
 
@@ -35,7 +38,7 @@ Add a module-level constant:
 MIN_CHARGE_CURRENT = 6
 ```
 
-Use it as `native_min_value` for the `available_current` (`INSTALLATION_ENTITIES`) and `charger_min_current` (`CHARGER_ENTITIES`) descriptions, replacing the current `native_min_value=0`.
+Use it as `native_min_value` for the `charger_min_current` (`CHARGER_ENTITIES`) description, replacing the current `native_min_value=0`.
 
 This is sufficient on its own: Home Assistant's `number.set_value` service handler rejects out-of-range values with `ServiceValidationError` before `async_set_native_value` is ever called (confirmed by reading `homeassistant/components/number/__init__.py`), and the frontend slider is bounded by the same value. No custom validation code is needed for this part.
 
@@ -52,7 +55,7 @@ No new `ZapNumberEntityDescription` fields are needed since there are only two c
 ### 3. Tests
 
 Add `tests/test_number.py` (no tests currently exist for `number.py`). Cover:
-- `available_current` and `charger_min_current` entity descriptions declare `native_min_value == MIN_CHARGE_CURRENT`.
+- The `charger_min_current` entity description declares `native_min_value == MIN_CHARGE_CURRENT`, while `available_current` and `three_to_one_phase_switch_current` still declare `native_min_value == 0`.
 - Setting `charger_min_current` above the current `charger_max_current` raises `HomeAssistantError` and does not call `set_settings`.
 - Setting `charger_max_current` below the current `charger_min_current` raises `HomeAssistantError` and does not call `set_settings`.
 - Setting either value when the sibling is unavailable (`None`) proceeds normally (calls `set_settings`).
@@ -60,6 +63,6 @@ Add `tests/test_number.py` (no tests currently exist for `number.py`). Cover:
 
 ## Non-goals
 
-- No change to `ThreeToOnePhaseSwitchCurrent` behavior.
+- No change to `ThreeToOnePhaseSwitchCurrent` or `AvailableCurrent` behavior.
 - No attempt to resolve the broader validation-rules request tracked in upstream #192.
-- No change to `ZaptecAvailableCurrentNumber` relational behavior beyond the floor bump (its max is already bounded by the installation's reported `MaxCurrent`).
+- No change to `ZaptecAvailableCurrentNumber` (its max is already bounded by the installation's reported `MaxCurrent`).

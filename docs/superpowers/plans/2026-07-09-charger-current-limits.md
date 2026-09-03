@@ -4,12 +4,15 @@
 
 **Goal:** Enforce the current-value constraints on Zaptec number entities that upstream issue [custom-components/zaptec#289](https://github.com/custom-components/zaptec/issues/289) confirmed as valid, without touching the one field where Zaptec's own docs contradict the blanket recommendation.
 
-**Architecture:** Two independent, additive changes to `custom_components/zaptec/number.py`: (1) raise the declared `native_min_value` on two number entity descriptions from `0` to `6`, which is enough for Home Assistant's own `number.set_value` service to reject out-of-range values before `async_set_native_value` is even called; (2) add a small relational check inside `ZaptecSettingNumber.async_set_native_value` so that `charger_max_current` can never be set below the charger's current `charger_min_current`, and vice versa.
+**Architecture:** Two independent, additive changes to `custom_components/zaptec/number.py`: (1) raise the declared `native_min_value` on the `charger_min_current` entity description from `0` to `6`, which is enough for Home Assistant's own `number.set_value` service to reject out-of-range values before `async_set_native_value` is even called; (2) add a small relational check inside `ZaptecSettingNumber.async_set_native_value` so that `charger_max_current` can never be set below the charger's current `charger_min_current`, and vice versa.
 
 **Tech Stack:** Python 3.14, Home Assistant custom component, pytest + pytest-asyncio (`asyncio_mode = "auto"`, no `@pytest.mark.asyncio` needed).
 
+> **Revision (2026-09-03):** Task 1 was narrowed after implementation. `available_current` no longer gets the 6A floor — `0` there is a regularly used way to hold the charger off (it is what the author's own solar-surplus automation writes to stop charging), and a floor would make Home Assistant reject those `number.set_value` calls with `ServiceValidationError`. Only `charger_min_current` keeps the floor. See the spec's Background and Scope sections.
+
 ## Global Constraints
 
+- `available_current` keeps `native_min_value=0` — see the revision note above.
 - `three_to_one_phase_switch_current` keeps `native_min_value=0` — do not add a floor to this field (Zaptec's own docs describe `0` as a valid special value to force 3-phase charging; this is spec §Scope, out of scope).
 - `charger_max_current` does not get a static floor — only the relational (`>= charger_min_current`) check applies to it.
 - No new `ZapNumberEntityDescription` fields — the relational check is a plain conditional inside the existing method, keyed off `entity_description.setting` (only two cases exist: `"minChargeCurrent"`, `"maxChargeCurrent"`).
@@ -18,14 +21,14 @@
 
 ---
 
-### Task 1: Raise the minimum-current floor on `available_current` and `charger_min_current`
+### Task 1: Raise the minimum-current floor on `charger_min_current`
 
 **Files:**
 - Modify: `custom_components/zaptec/number.py:23` (add constant), `:150-171` (`INSTALLATION_ENTITIES`), `:173-206` (`CHARGER_ENTITIES`)
 - Test: `tests/test_number.py` (new file)
 
 **Interfaces:**
-- Produces: `MIN_CHARGE_CURRENT: int = 6` module-level constant in `custom_components/zaptec/number.py`, used as `native_min_value` on the `available_current` and `charger_min_current` `ZapNumberEntityDescription` entries. Task 2 does not depend on this constant, but both tasks touch the same file.
+- Produces: `MIN_CHARGE_CURRENT: int = 6` module-level constant in `custom_components/zaptec/number.py`, used as `native_min_value` on the `charger_min_current` `ZapNumberEntityDescription` entry only. Task 2 does not depend on this constant, but both tasks touch the same file.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -45,9 +48,11 @@ def _find(descriptions: list, key: str):
     return next(d for d in descriptions if d.key == key)
 
 
-def test_available_current_has_min_charge_current_floor() -> None:
+def test_available_current_keeps_zero_floor() -> None:
+    # 0 is a regularly used way to hold the charger off, so this field
+    # must not get the 6A floor.
     description = _find(INSTALLATION_ENTITIES, "available_current")
-    assert description.native_min_value == MIN_CHARGE_CURRENT
+    assert description.native_min_value == 0
 
 
 def test_charger_min_current_has_min_charge_current_floor() -> None:
@@ -71,7 +76,7 @@ def test_three_to_one_phase_switch_current_keeps_zero_floor() -> None:
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `"C:\Users\rhamm\anaconda3\envs\py314\python.exe" -m pytest tests/test_number.py -v`
-Expected: `ImportError: cannot import name 'MIN_CHARGE_CURRENT'` (the constant doesn't exist yet), or `FAIL` on the two floor assertions once the import is fixed manually — either way, it must not pass as-is.
+Expected: `ImportError: cannot import name 'MIN_CHARGE_CURRENT'` (the constant doesn't exist yet), or `FAIL` on the `charger_min_current` floor assertion once the import is fixed manually — either way, it must not pass as-is.
 
 - [ ] **Step 3: Add the constant and bump the two floors**
 
@@ -83,22 +88,7 @@ _LOGGER = logging.getLogger(__name__)
 MIN_CHARGE_CURRENT = 6  # IEC 61851 minimum current for EV charging (amps)
 ```
 
-In `INSTALLATION_ENTITIES`, change the `available_current` entry's `native_min_value` from `0` to `MIN_CHARGE_CURRENT`:
-
-```python
-    ZapNumberEntityDescription(
-        key="available_current",
-        translation_key="available_current",
-        device_class=NumberDeviceClass.CURRENT,
-        native_min_value=MIN_CHARGE_CURRENT,
-        native_max_value=0,
-        icon="mdi:waves",
-        native_unit_of_measurement=const.UnitOfElectricCurrent.AMPERE,
-        cls=ZaptecAvailableCurrentNumber,
-    ),
-```
-
-Leave the `three_to_one_phase_switch_current` entry directly below it unchanged (`native_min_value=0`).
+Leave `INSTALLATION_ENTITIES` entirely unchanged — both the `available_current` entry and the `three_to_one_phase_switch_current` entry directly below it keep `native_min_value=0`. See the revision note at the top of this plan.
 
 In `CHARGER_ENTITIES`, change the `charger_min_current` entry's `native_min_value` from `0` to `MIN_CHARGE_CURRENT`:
 
@@ -137,7 +127,7 @@ Expected: `ruff format` reports 0 or 2 files reformatted (fine either way); `ruf
 
 ```bash
 git add custom_components/zaptec/number.py tests/test_number.py
-git commit -m "Enforce 6A minimum on available_current and charger_min_current"
+git commit -m "Enforce a 6A minimum on charger_min_current"
 ```
 
 ---
