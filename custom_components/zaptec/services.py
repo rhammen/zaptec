@@ -13,6 +13,7 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import DOMAIN
+from .errors import api_call_error
 from .zaptec import Charger, Installation
 
 if TYPE_CHECKING:
@@ -224,7 +225,7 @@ async def service_handle_stop_charging(service_call: ServiceCall) -> None:
         try:
             await obj.command("stop_charging_final")
         except Exception as exc:
-            raise HomeAssistantError(f"Command 'stop_charging_final' failed: {exc}") from exc
+            raise api_call_error(exc, "Command 'stop_charging_final'") from exc
         await coordinator.trigger_poll()
 
 
@@ -240,7 +241,7 @@ async def service_handle_resume_charging(service_call: ServiceCall) -> None:
         try:
             await obj.command("resume_charging")
         except Exception as exc:
-            raise HomeAssistantError(f"Command 'resume_charging' failed: {exc}") from exc
+            raise api_call_error(exc, "Command 'resume_charging'") from exc
         await coordinator.trigger_poll()
 
 
@@ -256,7 +257,7 @@ async def service_handle_authorize_charging(service_call: ServiceCall) -> None:
         try:
             await obj.authorize_charge()
         except Exception as exc:
-            raise HomeAssistantError(f"Command 'authorize_charge' failed: {exc}") from exc
+            raise api_call_error(exc, "Command 'authorize_charge'") from exc
         await coordinator.trigger_poll()
 
 
@@ -272,7 +273,7 @@ async def service_handle_deauthorize_charging(service_call: ServiceCall) -> None
         try:
             await obj.command("deauthorize_and_stop")
         except Exception as exc:
-            raise HomeAssistantError(f"Command 'deauthorize_and_stop' failed: {exc}") from exc
+            raise api_call_error(exc, "Command 'deauthorize_and_stop'") from exc
         await coordinator.trigger_poll()
 
 
@@ -288,7 +289,7 @@ async def service_handle_restart_charger(service_call: ServiceCall) -> None:
         try:
             await obj.command("restart_charger")
         except Exception as exc:
-            raise HomeAssistantError(f"Command 'restart_charger' failed: {exc}") from exc
+            raise api_call_error(exc, "Command 'restart_charger'") from exc
         await coordinator.trigger_poll()
 
 
@@ -304,7 +305,7 @@ async def service_handle_upgrade_firmware(service_call: ServiceCall) -> None:
         try:
             await obj.command("upgrade_firmware")
         except Exception as exc:
-            raise HomeAssistantError(f"Command 'upgrade_firmware' failed: {exc}") from exc
+            raise api_call_error(exc, "Command 'upgrade_firmware'") from exc
         await coordinator.trigger_poll()
 
 
@@ -332,7 +333,7 @@ async def service_handle_limit_current(service_call: ServiceCall) -> None:
         try:
             await obj.set_limit_current(**limit_args)
         except Exception as exc:
-            raise HomeAssistantError(f"Limit current failed: {exc}") from exc
+            raise api_call_error(exc, "Limit current") from exc
         await coordinator.trigger_poll()
 
 
@@ -347,7 +348,7 @@ async def service_handle_send_command(service_call: ServiceCall) -> None:
         try:
             await obj.command(command)
         except Exception as exc:
-            raise HomeAssistantError(f"Command '{command}' failed: {exc}") from exc
+            raise api_call_error(exc, f"Command '{command}'") from exc
         await coordinator.trigger_poll()
 
 
