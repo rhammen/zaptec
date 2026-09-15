@@ -30,6 +30,7 @@ from .const import (
 )
 from .coordinator import ZaptecUpdateCoordinator
 from .entity import KeyUnavailableError, ZaptecBaseEntity
+from .statistics import ZaptecStatisticsCoordinator
 from .zaptec import STREAM_TRANSIENT_ERRORS, Charger, Installation, Zaptec, ZaptecBase
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,6 +125,9 @@ class ZaptecManager:
     device_coordinators: dict[str, ZaptecUpdateCoordinator]
     """Coordinators for the devices, both installation and chargers."""
 
+    statistics_coordinators: dict[str, ZaptecStatisticsCoordinator]
+    """Coordinators that backdate hourly energy statistics, one per tracked charger."""
+
     streams: list[tuple[asyncio.Task, Installation]]
     """List of active streams for the installations."""
 
@@ -143,6 +147,7 @@ class ZaptecManager:
         self.tracked_devices = tracked_devices or set()
         self.name_prefix = name_prefix
         self.device_coordinators = {}
+        self.statistics_coordinators = {}
         self.streams = []
 
     @property
