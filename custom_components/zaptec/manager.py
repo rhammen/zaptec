@@ -253,7 +253,7 @@ class ZaptecManager:
                 info = DeviceInfo()
                 if (
                     obj.id in self.tracked_devices
-                    and obj.installation
+                    and obj.installation is not None
                     and obj.installation.id in self.tracked_devices
                 ):
                     # via_device_id needs the installation device to exist
