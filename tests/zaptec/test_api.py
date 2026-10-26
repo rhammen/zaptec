@@ -381,6 +381,19 @@ def test_state_to_attrs_skips_missing_key_and_missing_value() -> None:
     assert out == {}
 
 
+def test_state_to_attrs_clears_session_observation_without_value() -> None:
+    """A session observation sent without a value clears the attribute.
+
+    Zaptec signals "no session" by sending SessionIdentifier (721) and
+    ChargerCurrentUserUuid (722) with no ValueAsString at all, rather than
+    with an empty value.
+    """
+    data = [{"StateId": 721}, {"StateId": 722}]
+    keydict = {721: "SessionIdentifier", 722: "ChargerCurrentUserUuid"}
+    out = ZaptecBase.state_to_attrs(data, "StateId", keydict)
+    assert out == {"SessionIdentifier": "", "ChargerCurrentUserUuid": ""}
+
+
 def test_state_to_attrs_excludes() -> None:
     """Excluded ids are dropped."""
     data = [
@@ -544,6 +557,33 @@ def test_stream_update_zero_guid_is_ignored() -> None:
     inst, charger = _installation_with_charger()
     inst.stream_update({"ChargerId": "00000000-0000-0000-0000-000000000000"})
     charger.set_attributes.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+#   Installation.stream_main error propagation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_main_propagates_non_forbidden_error() -> None:
+    """A non-403 error fetching stream connection details now propagates (issue #417)."""
+    inst = Installation({"Id": "inst-1"}, _fake_owner())
+    inst.live_stream_connection_details = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RequestError("server error", HTTPStatus.BAD_GATEWAY)
+    )
+    with pytest.raises(RequestError):
+        await inst.stream_main()
+
+
+@pytest.mark.asyncio
+async def test_stream_main_forbidden_returns_none() -> None:
+    """A 403 fetching stream connection details still returns cleanly."""
+    inst = Installation({"Id": "inst-1"}, _fake_owner())
+    inst.live_stream_connection_details = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RequestError("no access", HTTPStatus.FORBIDDEN)
+    )
+    result = await inst.stream_main()
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -858,6 +898,30 @@ async def test_poll_state_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_poll_state_clears_session_attribute_when_value_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session that ends clears the attribute instead of leaving it stale."""
+    monkeypatch.setattr(ZCONST, "observations", {722: "ChargerCurrentUserUuid"}, raising=False)
+    monkeypatch.setattr("custom_components.zaptec.zaptec.api.validate", Mock())
+    charger, _ = _charger_with_session(
+        [
+            FakeResponse(
+                HTTPStatus.OK,
+                json_data=[{"StateId": 722, "ValueAsString": "nfc-abc123"}],
+            ),
+            FakeResponse(HTTPStatus.OK, json_data=[{"StateId": 722}]),
+        ]
+    )
+
+    await charger.poll_state()
+    assert charger.get("charger_current_user_uuid") == "nfc-abc123"
+
+    await charger.poll_state()
+    assert charger.get("charger_current_user_uuid") == ""
+
+
+@pytest.mark.asyncio
 async def test_poll_state_forbidden_is_ignored() -> None:
     """A 403 on the state endpoint is swallowed (no attribute update)."""
     charger, _ = _charger_with_session([FakeResponse(HTTPStatus.FORBIDDEN)])
@@ -966,6 +1030,74 @@ def test_zaptec_collections_and_accessors() -> None:
 
     zap.unregister("c1")
     assert set(zap) == {"i1"}
+
+
+@pytest.mark.asyncio
+async def test_build_hierarchy_handles_null_circuit_chargers() -> None:
+    """A null Circuit.Chargers (nullable per the API docs) yields no chargers, not a TypeError."""
+
+    hierarchy_payload = {
+        "Id": "abcdef01-2345-6789-abcd-ef0123456789",
+        "Circuits": [
+            {
+                "Id": "11111111-1111-1111-1111-111111111111",
+                "MaxCurrent": 32.0,
+                "Chargers": None,
+            },
+        ],
+    }
+    zap, _ = _make_zaptec([FakeResponse(HTTPStatus.OK, json_data=hierarchy_payload)])
+    inst = Installation({"Id": "abcdef01-2345-6789-abcd-ef0123456789"}, zap)
+    zap.register(inst.id, inst)
+
+    await inst.build()
+
+    assert inst.chargers == []
+
+
+@pytest.mark.asyncio
+async def test_build_hierarchy_charger_with_device_type_survives_full_build() -> None:
+    """A hierarchy-only charger survives Zaptec.build()'s chg["DeviceType"] subscript.
+
+    A charger seen only via the hierarchy is never re-merged with the /chargers
+    list, so its DeviceType comes solely from the hierarchy stub -- which the
+    Charger model now requires. Drives the full build() to prove no KeyError.
+    """
+    inst_id = "abcdef01-2345-6789-abcd-ef0123456789"
+    charger_id = "12345678-90ab-cdef-1234567890ab"
+
+    outcomes = [
+        FakeResponse(HTTPStatus.OK, json_data={}),  # constants
+        FakeResponse(  # installation list
+            HTTPStatus.OK, json_data={"Pages": 1, "Data": [{"Id": inst_id}]}
+        ),
+        FakeResponse(  # installation/{id}/hierarchy
+            HTTPStatus.OK,
+            json_data={
+                "Id": inst_id,
+                "Circuits": [
+                    {
+                        "Id": "11111111-1111-1111-1111-111111111111",
+                        "MaxCurrent": 32.0,
+                        "Chargers": [{"Id": charger_id, "DeviceType": 4}],
+                    },
+                ],
+            },
+        ),
+        FakeResponse(  # chargers list
+            HTTPStatus.OK,
+            json_data={"Pages": 1, "Data": [{"Id": charger_id, "DeviceType": 4}]},
+        ),
+    ]
+    zap, _ = _make_zaptec(outcomes)
+
+    await zap.build()
+
+    assert zap.is_built
+    charger: Charger = zap[charger_id]
+    # str(val) fallback: the constants schema has no DeviceType entry here. The
+    # point is only that build() populated it at all (no KeyError on subscript).
+    assert charger["DeviceType"] == "4"
 
 
 @pytest.mark.asyncio

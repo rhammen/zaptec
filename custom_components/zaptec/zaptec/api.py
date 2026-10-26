@@ -18,7 +18,7 @@ from typing import Any, ClassVar, Protocol, Self
 import aiohttp
 from aiolimiter import AsyncLimiter
 from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus.exceptions import ServiceBusError
+from azure.servicebus.exceptions import MessageAlreadySettled, ServiceBusError
 import pydantic
 
 from .const import (
@@ -32,6 +32,7 @@ from .const import (
     API_TIMEOUT,
     API_URL,
     CHARGER_EXCLUDES,
+    CLEARABLE_OBSERVATIONS,
     DEFAULT_MAX_CURRENT,
     MAX_DEBUG_TEXT_LEN_ON_500,
     MISSING,
@@ -46,6 +47,7 @@ from .exceptions import (
     RequestError,
     RequestRetryError,
     RequestTimeoutError,
+    ZaptecApiError,
 )
 from .redact import Redactor
 from .utils import mc_nbfx_decoder, to_under
@@ -63,6 +65,16 @@ DEBUG_API_EXCEPTIONS = False
 TValue = str | int | float | bool
 TDict = dict[str, TValue]
 StreamCallback = Callable[[dict], Awaitable[None]]
+
+STREAM_TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
+    ServiceBusError,
+    MessageAlreadySettled,  # a ValueError, not a ServiceBusError
+    OSError,  # includes ConnectionError
+    TimeoutError,
+    aiohttp.ClientError,
+    ZaptecApiError,
+)
+"""Errors a dropped stream is expected to fail with, e.g. a network outage."""
 
 
 class TLogExc(Protocol):
@@ -209,6 +221,8 @@ class ZaptecBase(Mapping[str, TValue]):
                 _LOGGER.debug("Excluding key %s entry: %s", skey, item)
                 continue
             value = item.get("Value", item.get("ValueAsString", MISSING))
+            if value is MISSING and str(skey) in CLEARABLE_OBSERVATIONS:
+                value = ""
             if value is not MISSING:
                 kv = keydict.get(skey, f"{key} {skey}")
                 if kv in out:
@@ -269,10 +283,22 @@ class Installation(ZaptecBase):
         redact = self.zaptec.redact
 
         self.chargers = []
+        if not hierarchy.get("Circuits"):
+            _LOGGER.warning("Installation %s contains no circuits.", self.qual_id)
+            return
+
         for circuit in hierarchy["Circuits"]:
             ctid = circuit["Id"]
             redact.add_uid(ctid, "Circuit")
             _LOGGER.debug("    Circuit %s", redact(ctid))
+
+            if not circuit.get("Chargers"):
+                _LOGGER.warning(
+                    "Circuit %s of installation %s contains no chargers.",
+                    redact(ctid),
+                    self.qual_id,
+                )
+                continue
 
             for charger_item in circuit["Chargers"]:
                 chgid = charger_item["Id"]
@@ -281,7 +307,7 @@ class Installation(ZaptecBase):
                 # Inject additional attributes
                 charger_item["InstallationId"] = self.id
                 charger_item["CircuitId"] = ctid
-                charger_item["CircuitName"] = circuit["Name"]
+                charger_item["CircuitName"] = circuit.get("Name")
                 charger_item["CircuitMaxCurrent"] = circuit["MaxCurrent"]
 
                 # Add or update the charger
@@ -386,7 +412,10 @@ class Installation(ZaptecBase):
         _LOGGER.debug("@@@  EVENT %s", self.zaptec.redact(data))
 
     async def stream_main(
-        self, cb: StreamCallback | None = None, ssl_context: ssl.SSLContext | None = None
+        self,
+        cb: StreamCallback | None = None,
+        ssl_context: ssl.SSLContext | None = None,
+        on_connect: Callable[[], None] | None = None,
     ) -> None:
         """Main stream handler."""
         # Already running?
@@ -435,6 +464,8 @@ class Installation(ZaptecBase):
                 # Store the receiver in order to close it and cancel this stream
                 self._stream_receiver = receiver
                 async with receiver:
+                    if on_connect:
+                        on_connect()
                     async for msg in receiver:
                         # For the exception in case it fails before setting the value
                         binmsg = "<unknown>"
@@ -470,10 +501,6 @@ class Installation(ZaptecBase):
 
                         # remove the msg from the "queue"
                         await receiver.complete_message(msg)
-
-        except Exception:
-            # Do this in order to show the error in the log.
-            _LOGGER.exception("Stream failed")
 
         finally:
             # Cleanup
