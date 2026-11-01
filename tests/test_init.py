@@ -63,7 +63,12 @@ async def test_setup_entry_creates_manager_and_entities(
     states = [s for s in hass.states.async_all() if s.entity_id.split(".")[1].startswith("mock")]
     assert states, "expected at least one zaptec entity to be created"
 
-    assert device_registry.async_get_device(identifiers={(DOMAIN, "chg-mock-1")}) is not None
+    assert (
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, "chg-mock-1"), mock_config_entry.entry_id
+        )
+        is not None
+    )
 
 
 async def test_setup_entry_charger_with_installation_has_via_device(
@@ -453,7 +458,13 @@ async def test_setup_entry_cleans_up_deselected_charger(
     assert (device_registry.async_get(stale.id) is None) is expect_removed
     assert (entity_registry.async_get(stale_entity) is None) is expect_removed
     # The still-selected charger keeps its device either way.
-    assert device_registry.async_get_device(identifiers={(DOMAIN, "chg-mock-1")}) is not None
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, "chg-mock-1"), entry.entry_id)
+        is not None
+    )
     # So does its installation: `first_time_setup` keeps the installation of any
     # selected charger, so it must never be seen as untracked and reaped.
-    assert device_registry.async_get_device(identifiers={(DOMAIN, "inst-mock-1")}) is not None
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, "inst-mock-1"), entry.entry_id)
+        is not None
+    )
