@@ -108,9 +108,13 @@ async def test_resolves_via_legacy_charger_id(hass: HomeAssistant, charger: Magi
     charger.command.assert_awaited_once_with("stop_charging_final")
 
 
-async def test_resolves_via_device_id(hass: HomeAssistant, charger: MagicMock) -> None:
+async def test_resolves_via_device_id(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, charger: MagicMock
+) -> None:
     """A device_id resolves through the device registry's zaptec identifier."""
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, CHARGER_ID)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, CHARGER_ID), mock_config_entry.entry_id
+    )
     assert device is not None
 
     await service_handle_stop_charging(make_call(hass, {"device_id": device.id}))
@@ -118,9 +122,13 @@ async def test_resolves_via_device_id(hass: HomeAssistant, charger: MagicMock) -
     charger.command.assert_awaited_once_with("stop_charging_final")
 
 
-async def test_resolves_via_entity_id(hass: HomeAssistant, charger: MagicMock) -> None:
+async def test_resolves_via_entity_id(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, charger: MagicMock
+) -> None:
     """An entity_id resolves through the entity registry's device, then the device registry."""
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, CHARGER_ID)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, CHARGER_ID), mock_config_entry.entry_id
+    )
     assert device is not None
     entity_entry = next(
         e for e in er.async_get(hass).entities.values() if e.device_id == device.id
