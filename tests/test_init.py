@@ -72,20 +72,18 @@ async def test_setup_entry_charger_with_installation_has_via_device(
     mock_zaptec: MagicMock,
     enable_custom_integrations: None,
 ) -> None:
-    """A charger belonging to an installation gets a `via_device` pointing at it.
-
-    Asserted on the DeviceInfo rather than the registry's `via_device_id`: HA resolves
-    `via_device` when the device is created, and `mock_zaptec` adds only one
-    installation entity, late, so the installation device may not exist yet when the
-    charger is registered. Asserting on the registry here is measurably flaky.
-    """
+    """A charger belonging to an installation gets a `via_device_id` pointing at it."""
     manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
 
     entities = manager.create_entities_from_zaptec(
         [], [ZaptecEntityDescription(key="operating_mode", cls=ZaptecBaseEntity)]
     )
     charger_entity = next(e for e in entities if e.zaptec_obj.id == "chg-mock-1")
-    assert charger_entity.device_info["via_device"] == (DOMAIN, "inst-mock-1")
+    installation_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, "inst-mock-1"), mock_config_entry.entry_id
+    )
+    assert installation_device is not None
+    assert charger_entity.device_info["via_device_id"] == installation_device.id
 
 
 async def test_setup_entry_charger_without_installation_has_no_via_device(
@@ -94,7 +92,7 @@ async def test_setup_entry_charger_without_installation_has_no_via_device(
     mock_zaptec: MagicMock,
     enable_custom_integrations: None,
 ) -> None:
-    """A charger with no installation gets a DeviceInfo without `via_device`."""
+    """A charger with no installation gets a DeviceInfo without `via_device_id`."""
     mock_zaptec.chargers[0].installation = None
 
     manager = await setup_integration(hass, mock_config_entry, mock_zaptec)
@@ -103,7 +101,7 @@ async def test_setup_entry_charger_without_installation_has_no_via_device(
         [], [ZaptecEntityDescription(key="operating_mode", cls=ZaptecBaseEntity)]
     )
     charger_entity = next(e for e in entities if e.zaptec_obj.id == "chg-mock-1")
-    assert "via_device" not in charger_entity.device_info
+    assert "via_device_id" not in charger_entity.device_info
 
 
 def _zaptec_double(chargers: list[MagicMock], objects: dict[str, MagicMock]) -> MagicMock:
