@@ -227,6 +227,9 @@
         },
         "api_error_scheduled": {
             "message": "{action} failed: cannot change the requested setting while the installation is in \"Scheduled charging\" mode."
+        },
+        "no_devices_found": {
+            "message": "No Zaptec installations or chargers found for account {username}. Check that this is the right Zaptec account and that the selected chargers still exist, using Reconfigure."
         }
     },
     "issues": {

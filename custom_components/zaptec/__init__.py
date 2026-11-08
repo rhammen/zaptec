@@ -130,6 +130,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         zaptec=zaptec,
         configured_chargers=configured_chargers,
     )
+    if not tracked_devices:
+        msg = "No Zaptec installations or chargers found for this account or selection"
+        raise ConfigEntryError(
+            msg,
+            translation_domain=DOMAIN,
+            translation_key="no_devices_found",
+            translation_placeholders={"username": entry.data[CONF_USERNAME]},
+        )
 
     # Setup the manager which will be where all the instance data is stored
     manager = ZaptecManager(

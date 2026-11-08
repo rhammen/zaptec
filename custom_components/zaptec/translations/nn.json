@@ -227,6 +227,9 @@
         },
         "api_error_scheduled": {
             "message": "{action} mislukkast: den førespurde innstillinga kan ikkje endrast medan installasjonen er i modusen «Planlagd lading»."
+        },
+        "no_devices_found": {
+            "message": "Fann ingen Zaptec-installasjonar eller -ladarar for kontoen {username}. Bruk Rekonfigurer for å sjekke at dette er rett Zaptec-konto og at dei valde ladarane framleis finst."
         }
     },
     "issues": {

@@ -227,6 +227,9 @@
         },
         "api_error_scheduled": {
             "message": "{action} is mislukt: de gevraagde instelling kan niet worden gewijzigd zolang de installatie in de modus \"Gepland laden\" staat."
+        },
+        "no_devices_found": {
+            "message": "Geen Zaptec-installaties of -laders gevonden voor account {username}. Controleer via Opnieuw configureren of dit het juiste Zaptec-account is en of de geselecteerde laders nog bestaan."
         }
     },
     "issues": {

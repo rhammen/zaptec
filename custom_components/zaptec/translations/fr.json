@@ -227,6 +227,9 @@
         },
         "api_error_scheduled": {
             "message": "{action} a échoué : impossible de modifier le réglage demandé tant que l'installation est en mode « Recharge programmée »."
+        },
+        "no_devices_found": {
+            "message": "Aucune installation ni borne Zaptec trouvée pour le compte {username}. Vérifiez via Reconfigurer qu'il s'agit du bon compte Zaptec et que les bornes sélectionnées existent toujours."
         }
     }
 }
