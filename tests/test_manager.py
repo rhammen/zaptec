@@ -438,13 +438,15 @@ class FakeZaptec:
 @pytest.mark.asyncio
 async def test_first_time_setup_without_chargers_tracks_nothing() -> None:
     """An account that logs in but sees no devices tracks nothing."""
-    assert await ZaptecManager.first_time_setup(FakeZaptec([]), configured_chargers=None) == set()
+    tracked, _ = await ZaptecManager.first_time_setup(FakeZaptec([]), configured_chargers=None)
+
+    assert tracked == set()
 
 
 @pytest.mark.asyncio
 async def test_first_time_setup_without_selected_chargers_tracks_nothing() -> None:
     """Manually selected chargers that are all gone track nothing."""
-    tracked = await ZaptecManager.first_time_setup(
+    tracked, _ = await ZaptecManager.first_time_setup(
         FakeZaptec(["other"], installation_id="inst"), configured_chargers={CHARGER_ID}
     )
 
@@ -454,7 +456,7 @@ async def test_first_time_setup_without_selected_chargers_tracks_nothing() -> No
 @pytest.mark.asyncio
 async def test_first_time_setup_tracks_charger_and_installation() -> None:
     """A selected charger is tracked together with its installation."""
-    tracked = await ZaptecManager.first_time_setup(
+    tracked, _ = await ZaptecManager.first_time_setup(
         FakeZaptec([CHARGER_ID], installation_id="inst"), configured_chargers={CHARGER_ID}
     )
 
@@ -464,7 +466,7 @@ async def test_first_time_setup_tracks_charger_and_installation() -> None:
 @pytest.mark.asyncio
 async def test_first_time_setup_tracks_installation_without_chargers() -> None:
     """An installation without chargers is still set up."""
-    tracked = await ZaptecManager.first_time_setup(
+    tracked, _ = await ZaptecManager.first_time_setup(
         FakeZaptec([], installation_id="inst"), configured_chargers=None
     )
 
